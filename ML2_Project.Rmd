@@ -30,23 +30,23 @@ knitr::opts_chunk$set(echo = FALSE)
 # some code here 
 ```
 
-#1 Introduction
+# 1 Introduction
 
 \newpage
 
 
-#2 First Model
+# 2 First Model
 
 \newpage
 
-#3 Third Model
+# 3 Third Model
 
 \newpage
 
-#4 Comparision
+# 4 Comparision
 
 \newpage
 
-#5 Conclusion
+# 5 Conclusion
 
 \newpage
