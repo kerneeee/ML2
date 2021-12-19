@@ -1,6 +1,6 @@
 ---
 title: "Analyzing indonesian rice farms"
-author: "Jonas Kernebeck, Alexander Nachname, Felix Lehner"
+author: "Jonas Kernebeck, Alexander Flick, Felix Lehner"
 date: "07/16/2021"
 output:
   pdf_document:
@@ -35,8 +35,14 @@ library(plm)
 library(GGally)
 library(heatmaply)
 require('tidyverse')
+library(tidyr)
 library(ggmosaic)
 library(gridExtra)
+library(gam)
+library(patchwork)
+library(ggcorrplot)
+library(kableExtra)
+library(formattable)
 library(ggplot2)
 library(productplots)
 ```
@@ -49,7 +55,7 @@ RiceFarms = RiceFarms[,col_to_remove]
 ```
 
 
-```{r data }
+```{r data}
 # some code here 
 ```
 
@@ -194,17 +200,498 @@ To test wheter the categorical variables have impact on our target variable *gou
 
 The anova outputs show, that all of the categorical variables have a significant effect on *goutput*. The null hypothesis, that the mean of *goutput* is the same across the groups is rejected. The results of the two-sided anovas also show a significant interaction effect on *goutput*. While the interaction effect from the *region* with *varieties* and *bimas* is significant, the interaction effect of *varieties* and *bimas* and the interaction effect of all three variables is not.
 
+# Data Preparation
+## Factor levels 
 
+We reset factor levels for later visualization purposes for variable bimas, varieties, etc.
 
+```{r}
+#reorder levels
+factor_bimas <- c("no", "mixed", "yes")
+RiceFarms$bimas <- factor(RiceFarms$bimas, levels = factor_bimas)
 
+factor_varieties <- c("trad", "mixed", "high")
+RiceFarms$varieties <- factor(RiceFarms$varieties, levels = factor_varieties)
+```
 
+## Outliers
+
+3 Outliers most likely due to typos for observation 110, 947 and 1004
+
+```{r echo=FALSE}
+#outliers
+#RiceFarms[RiceFarms$seed>1000,]
+#RiceFarms[RiceFarms$id==102220,]
+RiceFarms$seed[110] <- 125 #instead of 1250
+
+#RiceFarms[RiceFarms$pesticide>60000,]
+#RiceFarms[RiceFarms$id==607168,]
+RiceFarms$pesticide[947] <- 6260 #instead of 62600
+
+#outlier?
+#RiceFarms[RiceFarms$totlab_size>14000,]
+#RiceFarms[RiceFarms$id==609241,]
+RiceFarms$size[1004] <- 0.1 #instead of 0.01
+```
+
+## standardizing variables due to correlation
+**correlation with size**
+the amount of seed, phosphor, urea, totlabour and pesticide is highly dependent on the size of the cultivated area. Thus we will calculate a ratio for each of these variables so that they are becoming independent. 
+
+```{r}
+#divide by size
+RiceFarms$seed_size <- RiceFarms$seed/RiceFarms$size
+RiceFarms$phosph_size <- RiceFarms$phosphate/RiceFarms$size
+RiceFarms$urea_size <- RiceFarms$urea/RiceFarms$size
+RiceFarms$totlab_size <- RiceFarms$totlabor/RiceFarms$size
+RiceFarms$pest_size <- RiceFarms$pesticide/RiceFarms$size
+```
+
+**correlation with labour**
+create variable fam_ratio based on the amount of family labour from total labour
+
+```{r}
+RiceFarms$fam_ratio <- RiceFarms$famlabor/RiceFarms$totlabor
+```
+
+**Correlation plot**
+
+```{r}
+res <- cor(RiceFarms[,-c(1,3:15,19)])
+ggcorrplot(round(res, 2))
+```
+
+## Feature Engineering
+
+wage variable shows a bimodal distribution. We will use this to create a categorical variable.
+
+```{r}
+#wage
+#plot(wage,goutput)
+RiceFarms$wage_cat <- ifelse(RiceFarms$wage > 100, "<100", ">100")
+RiceFarms$wage_cat <- factor(RiceFarms$wage_cat)
+```
+
+## Model split
+60-20-20 split using seed to obtain always the same split
+
+```{r}
+#Split the data into a 60-20-20 split for training, validation and testing.
+set.seed(20211207)
+n <- nrow(RiceFarms)
+train <- sample(1:n,0.8*n)
+test <- setdiff(1:n,train)
+val <- sample(train,length(test))
+train <- setdiff(train,val)
+```
+
+## Model metrics
+**MSE** Mean Squared Error: comparing true values with predicted ones
+```{r}
+MSE <- function(model, data, split=train){
+  pred.split <- predict(model, newdata = data[split,])
+  return(mean((exp(pred.split)-RiceFarms$goutput[split])^2))
+}
+```
+
+\newpage
 
 # 2 First Model
 
 \newpage
 
-# 3 Third Model
+# 3 Second Model
+## GAM
 
+```{r}
+#size
+gam1 <- gam(log(goutput)~s(size), data = RiceFarms[train,])
+gam2 <- gam(log(goutput)~s(log(size)), data = RiceFarms[train,])
+```
+
+
+```{r}
+par(mfrow=c(1,1))
+plot.Gam(gam2, residuals = TRUE, col="lightblue")
+```
+
+```{r}
+#labour
+gam3 <- gam(log(goutput)~s(log(size))+s(log(totlab_size)), data = RiceFarms[train,])
+gam4 <- gam(log(goutput)~s(log(size))+s(totlab_size), data = RiceFarms[train,])
+
+par(mfrow=c(1,2))
+plot.Gam(gam3, residuals = TRUE, col="lightblue")
+```
+**Explanation:**
+The left-hand panel indicates that holding totlab_size fixed, goutput increases with size.
+The right-hand panel indicates that holding size fixed, goutput increases drasticall with the increased proportion of labour per size up to a proportion of 500 h / hectar and then flattens out.
+
+
+```{r}
+#urea
+gam5 <-  gam(log(goutput)~
+               s(log(size))+
+               s(log(totlab_size))+
+               s(log(urea_size)), data = RiceFarms[train,])
+
+gam5.1 <- gam(log(goutput)~
+                s(log(size))+
+                s(log(totlab_size))+
+                s(urea_size), data = RiceFarms[train,])
+
+#anova(gam4, gam5, gam5.1) #use gam5 with log(urea) slightly better
+
+#par(mfrow=c(1,3))
+#plot.Gam(gam5, residuals = TRUE, col="lightblue")
+```
+```{r}
+gam5.2 <-  gam(log(goutput)~
+                 s(log(size))+
+                 s(log(totlab_size))+
+                 s(log(urea_size), df=2), data = RiceFarms[train,])
+#deviance(gam5)
+#deviance(gam5.2) ## TODO: Check with others if we should use this
+
+#par(mfrow=c(1,3))
+#plot.Gam(gam5, residuals = TRUE, col="lightblue")
+#plot.Gam(gam5.2, residuals = TRUE, col="lightblue")
+
+#slope at beginning of urea size => set df to 2
+```
+
+```{r}
+#phosphor
+gam6 <- gam(log(goutput)~
+              s(log(size))+
+              s(log(totlab_size))+
+              s(log(urea_size), df=2)+
+              s(log(phosph_size+1)), data = RiceFarms[train,])
+
+gam6.1 <- gam(log(goutput)~
+                s(log(size))+
+                s(log(totlab_size))+
+                s(log(urea_size), df=1) +
+                s(log(phosph_size+1), df=2), data = RiceFarms[train,])
+
+gam7 <- gam(log(goutput)~
+              s(log(size))+
+              s(log(totlab_size))+
+              s(log(urea_size), df=2)+
+              s(phosph_size), data = RiceFarms[train,])
+
+#anova(gam5,gam6, gam7) #use gam6
+```
+
+```{r}
+#seed
+gam8 <- gam(log(goutput)~
+              s(log(size))+
+              s(log(totlab_size))+
+              s(log(urea_size), df=2) +
+              s(log(phosph_size+1))+
+              s(log(seed_size)), data = RiceFarms[train,])
+
+gam9 <- gam(log(goutput)~
+              s(log(size))+
+              s(log(totlab_size))+
+              s(log(urea_size), df=2) +
+              s(log(phosph_size+1))+
+              s(seed_size), data = RiceFarms[train,])
+
+#anova(gam6, gam8, gam9) #use gam9
+```
+
+```{r}
+#pesticide
+gam10 <- gam(log(goutput)~
+              s(log(size))+
+              s(log(totlab_size))+
+              s(log(urea_size), df=2) +
+              s(log(phosph_size+1))+
+              s(seed_size)+
+              s(pest_size), data = RiceFarms[train,])
+
+#tail(summary(gam10)$parametric.anova$Pr, n=2)[1]
+```
+
+```{r}
+gam10.1 <- gam(log(goutput)~
+               s(log(size))+
+               s(log(totlab_size))+
+               s(log(urea_size), df=2) +
+               s(log(phosph_size+1))+
+               s(seed_size)+
+               s(pest_size, df=2), data = RiceFarms[train,])
+
+#tail(summary(gam10.1)$parametric.anova$Pr, n=2)[1]
+```
+
+```{r}
+#add price
+gam11 <- gam(log(goutput)~
+               s(log(size))+
+               s(log(totlab_size))+
+               s(log(urea_size), df=2) +
+               s(log(phosph_size+1))+
+               s(seed_size)+
+               s(pest_size)+
+               s(price), data = RiceFarms[train,])
+
+#anova(gam10,gam11)
+```
+
+```{r}
+#add wage
+gam12 <- gam(log(goutput)~
+               s(log(size))+
+               s(log(totlab_size))+
+               s(log(urea_size), df=2) +
+               s(log(phosph_size+1))+
+               s(seed_size)+
+               s(pest_size)+
+               s(price)+
+               s(wage), data = RiceFarms[train,])
+
+gam12.2 <- gam(log(goutput)~
+                 s(log(size))+
+                 s(log(totlab_size))+
+                 s(log(urea_size), df=2) +
+                 s(log(phosph_size+1))+
+                 s(seed_size)+
+                 s(pest_size)+
+                 s(price)+
+                 wage_cat, data = RiceFarms[train,])
+
+#tail(summary(gam12.2)$parametric.anova$Pr, n=2)[1]
+```
+
+
+```{r}
+#add fam_ratio
+gam13 <- gam(log(goutput)~
+                 s(log(size))+
+                 s(log(totlab_size))+
+                 s(log(urea_size), df=2) +
+                 s(log(phosph_size+1))+
+                 s(seed_size)+
+                 s(pest_size)+
+                 s(price)+
+                 wage_cat+
+                 s(fam_ratio), data = RiceFarms[train,])
+
+#tail(summary(gam13)$parametric.anova$Pr, n=2)[1]
+#anova(gam12.2,gam13)
+```
+
+
+```{r}
+#bimas
+gam14 <- gam(log(goutput)~
+               s(log(size))+
+               s(log(totlab_size))+
+               s(log(urea_size), df=2) +
+               s(log(phosph_size+1))+
+               s(seed_size)+
+               s(pest_size)+
+               s(price)+
+               wage_cat+
+               s(fam_ratio)+
+               bimas, data = RiceFarms[train,])
+
+#summary(gam14)
+#tail(summary(gam14)$parametric.anova$Pr, n=2)[1]
+```
+
+
+
+```{r}
+#varieties
+gam15 <- gam(log(goutput)~
+               s(log(size))+
+               s(log(totlab_size))+
+               s(log(urea_size), df=2) +
+               s(log(phosph_size+1))+
+               s(seed_size)+
+               s(pest_size)+
+               s(price)+
+               wage_cat+
+               s(fam_ratio)+
+               bimas+
+               varieties, data = RiceFarms[train,])
+
+#tail(summary(gam15)$parametric.anova$Pr, n=2)[1]
+```
+
+
+```{r}
+#status
+
+gam16 <- gam(log(goutput)~
+               s(log(size))+
+               s(log(totlab_size))+
+               s(log(urea_size), df=2) +
+               s(log(phosph_size+1))+
+               s(seed_size)+
+               s(pest_size)+
+               s(price)+
+               wage_cat+
+               s(fam_ratio)+
+               bimas+
+               status, data = RiceFarms[train,])
+
+#tail(summary(gam16)$parametric.anova$Pr, n=2)[1]
+```
+
+
+```{r}
+#region
+gam17 <- gam(log(goutput)~
+               s(log(size))+
+               s(log(totlab_size))+
+               s(log(urea_size), df=2) +
+               s(log(phosph_size+1))+
+               s(seed_size)+
+               s(pest_size)+
+               s(price)+
+               wage_cat+
+               s(fam_ratio)+
+               bimas +
+               region, data = RiceFarms[train,])
+
+#tail(summary(gam17)$parametric.anova$Pr, n=2)[1]
+#anova(gam14,gam17)
+```
+
+## GAM Comparison
+
+**table for model selection**
+```{r }
+#results='asis'
+options(tinytex.verbose = TRUE)
+
+###############
+#table for model selection
+#https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html#Overview
+
+gams <- list(gam17,gam16, gam15, gam14, gam13, gam12.2, gam12, gam11, gam10.1, gam10, gam9, gam8 , gam7, gam6.1, gam6, gam5.2, gam5.1, gam5, gam4, gam3, gam2, gam1)
+gams <- rev(gams)
+
+l <- length(gams)
+var <- rep(NA, l)
+df <- rep(NA, l)
+MSE.train <- rep(NA, l)
+MSE.val <- rep(NA, l)
+dev <- rep(NA, l)
+aic <- rep(NA, l)
+p_val_p <- rep(NA, l)
+p_val_np <- rep(NA, l)
+df_np <- rep(NA, l)
+
+for (i in 1:l){
+  var[i] <- tail(names(coefficients(gams[[i]])), n=1)
+  df[i] <-  round(df.residual(gams[[i]]))
+  MSE.train[i] <- round(MSE(gams[[i]], RiceFarms, train))
+  MSE.val[i] <- round(MSE(gams[[i]], RiceFarms, val))
+  dev[i] <- round(deviance(gams[[i]]),1)
+  aic[i] <- round(AIC(gams[[i]]),1)
+  p_val_p[i] <- round(tail(summary(gams[[i]])$parametric.anova$Pr, n=2)[1],4)
+  p_val_np[i] <- round(tail(summary(gams[[i]])$anova$Pr, n=1)[1],4)
+  df_np[i] <- tail(summary(gams[[i]])$anova$`Npar Df`,n=1)
+}
+
+model_perf <- data.frame(var, df, MSE.train, MSE.val, dev, aic, p_val_p, p_val_np, df_np)
+#colnames(model_perf) <- c("var","df","MSE.train","MSE.val","dev","aic","p_val_p", "p_val_np", "df_np")
+
+kbl(model_perf, caption = "gam comparison") %>%
+  kable_paper("hover", full_width = FALSE) %>%
+  pack_rows("size", 1, 2) %>%
+  pack_rows("labour", 3, 4) %>%
+  pack_rows("urea", 5, 7) %>%
+  pack_rows("phosphor", 8, 10) %>%
+  pack_rows("seed", 11, 12) %>%
+  pack_rows("pesticide", 13, 14) %>%
+  pack_rows("price", 15, 15) %>%
+  pack_rows("wage", 16, 17) %>%
+  pack_rows("family labour", 18, 18) %>%
+  pack_rows("categorical variables", 19, 22) %>%
+  landscape()
+
+```
+
+gam2 is better, so we will use logarithm of size
+
+plot.gam for urea: slope at beginning of urea size => reduce df?
+
+phosphate:
+this variable has lots of zeros as values. So we can not use directly log transformation because log of 0 is -inf. According to : https://discuss.analyticsvidhya.com/t/methods-to-deal-with-zero-values-while-performing-log-transformation-of-variable/2431 log(x+1) transformation is the best way to avoid errors created  by log transformation and is widely used among data scientists. So we will use this approach.
+
+pesticide:
+Anova for Non-Parametric Effects p-value = 0.0001351187 => keep variable in model
+Anova for Parametric Effects p-value=0.433418 => reduce df of pest_size
+
+**check categorical variables**
+
+varieties: p-value 0.103104 => not enough evidence that this variable is significantly important based on a 5% significance level. BUT MSE decreases!
+
+status: p-value 0.212109  => not important
+
+**MSE and deviance visualization**
+
+```{r}
+gams <- list(gam17, gam14, gam13,gam12.2, gam11, gam10, gam9, gam6, gam5, gam3, gam2)
+gams <- rev(gams)
+
+l <- length(gams)
+var <- rep(NA, l)
+MSE.train <- rep(NA, l)
+MSE.val <- rep(NA, l)
+dev <- rep(NA, l)
+
+for (i in 1:l){
+  var[i] <- tail(names(coefficients(gams[[i]])), n=1)
+  MSE.train[i] <- round(MSE(gams[[i]], RiceFarms, train))
+  MSE.val[i] <- round(MSE(gams[[i]], RiceFarms, val))
+  dev[i] <- deviance(gams[[i]])
+}
+
+model_perf <- data.frame(MSE.train, MSE.val, dev, var,row.names = var)
+
+df.long <- pivot_longer(model_perf, cols=1:3, names_to = "metric", values_to = "value")
+#make var ordered factor
+
+df.long$var <- factor(df.long$var, levels =var)
+
+mse_plot <- ggplot(df.long[df.long$metric!="dev",])+
+  aes(x= var, y=value, group=metric, color = metric)+
+  geom_line()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        axis.title.x = element_blank())
+
+dev_plot <- ggplot(df.long[df.long$metric=="dev",])+
+  aes(x=var, y=value, group=1)+
+  geom_line()+
+  ylab("deviance")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        axis.title.x = element_blank())
+  
+mse_plot + dev_plot
+```
+\newpage
+
+## Final model visualization
+
+```{r}
+par(mfrow=c(3,4))
+plot.Gam(gam17, residuals = TRUE, se=TRUE, col="lightblue")
+```
+
+
+```{r}
+```
+
+```{r}
+```
 \newpage
 
 # 4 Comparision
