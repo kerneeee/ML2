@@ -1,5 +1,5 @@
 ---
-title: "Analyzing indian rice farms"
+title: "Analyzing indonesian rice farms"
 author: "Jonas Kernebeck, Alexander Nachname, Felix Lehner"
 date: "07/16/2021"
 output:
@@ -11,18 +11,41 @@ output:
     toc_depth: 2
 ---
 
+<!-- 
+packages
+install.packages("plm")
+install.packages("splm")
+install.packages("GGally")
+install.packages("heatmaply")
+install.packages("tidyverse")
+install.packages("corrr")
+install.packages("devtools")
+devtools::install_github("hadley/productplots")
+
+-->
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+
 ```
 
 \newpage
 
 ```{r imported libraries}
-
+library(plm)
+library(GGally)
+library(heatmaply)
+require('tidyverse')
+library(ggmosaic)
+library(gridExtra)
+library(ggplot2)
+library(productplots)
 ```
 
 ```{r constants}
-# some code here
+data("RiceFarms", package = "splm")
+
+col_to_remove = !names(RiceFarms) %in% c("id", "noutput")
+RiceFarms = RiceFarms[,col_to_remove]
 ```
 
 
@@ -32,32 +55,148 @@ knitr::opts_chunk$set(echo = FALSE)
 
 # 1 Introduction
 
-The present data set includes production data for 171 indian rice farms. The dataframe contains the following variables:
+The present data set includes production data for 171 indonesian rice farms. The dataframe contains the following variables:
 
-| variable   | description                                     | expressions               |
-|------------|-------------------------------------------------|---------------------------|
-| id         | unique identifier for a farm                    | unique id                 |
-| time       | unique identifier for a specific growing season | 1 - 6                     |
-| size       | total production area in hectares               | 0.01 - 5.322              |
-| status     | status of property rights                       | "owner", "share", "mixed" |
-| varieties  | rice seed varietes                              | "trad", "high", "mixed"   |
-| bimas      | bimas-status of the farmers                     | "no", "yes", "mixed"      |
-| seed       | seed in kilogram                                | 1 - 1250 kg               |
-| urea       | urea in kilogram                                | 1 - 1250 kg               |
-| phosphate  | phosphate in kilogram                           | 0 - 700 kg                |
-| pesticide  | pesticide cost in Rupiah                        | 0 - 62600 r               |
-| pseed      | price of seed in Rupiah per kg                  | 40 - 375 r/kg             |
-| purea      | price of urea in Rupiah per kg                  | 50 - 100 r/kg             |
-| pphosph    | price of phosphate in Rupiah per kg             | 60 - 120 r/kg             |
-| hiredlabor | hired labor in hours                            | 1 - 4536 h                |
-| famlabor   | family labor in hours                           | 1 - 1526 h                |
-| totlabor   | total labor (excluding harvest labor)           | 1 - 4774 h                |
-| wage       | labor wage in Rupiah per hour                   | 30 - 175.35 r/h           |
-| goutput    | gross output of rice in kg                      | 42 - 20960 kg             |
-| noutput    | gross output minus harvesting cost              | 42 - 17610 kg             |
-| price      | price of rough rice in Rupiah per kg            | 50 - 190 r/kg             |
-| region     | region of the farm                              | 6 regions in Indonesia    |
+|  variable  |                   description                   |        expressions        |
+|:----------:|:-----------------------------------------------:|:-------------------------:|
+|     id     |           unique identifier for a farm          |         unique id         |
+|    time    | unique identifier for a specific growing season |           1 - 6           |
+|    size    |        total production area in hectares        |        0.01 - 5.322       |
+|   status   |            status of property rights            | "owner", "share", "mixed" |
+|  varieties |                rice seed varietes               |  "trad", "high", "mixed"  |
+|    bimas   |           bimas-status of the farmers           |    "no", "yes", "mixed"   |
+|    seed    |                 seed in kilogram                |        1 - 1250 kg        |
+|    urea    |                 urea in kilogram                |        1 - 1250 kg        |
+|  phosphate |              phosphate in kilogram              |         0 - 700 kg        |
+|  pesticide |             pesticide cost in Rupiah            |        0 - 62600 r        |
+|    pseed   |          price of seed in Rupiah per kg         |       40 - 375 r/kg       |
+|    purea   |          price of urea in Rupiah per kg         |       50 - 100 r/kg       |
+|   pphosph  |       price of phosphate in Rupiah per kg       |       60 - 120 r/kg       |
+| hiredlabor |               hired labor in hours              |         1 - 4536 h        |
+|  famlabor  |              family labor in hours              |         1 - 1526 h        |
+|  totlabor  |      total labor (excluding harvest labor)      |         1 - 4774 h        |
+|    wage    |          labor wage in Rupiah per hour          |      30 - 175.35 r/h      |
+|   goutput  |            gross output of rice in kg           |       42 - 20960 kg       |
+|   noutput  |        gross output minus harvesting cost       |       42 - 17610 kg       |
+|    price   |       price of rough rice in Rupiah per kg      |       50 - 190 r/kg       |
+|   region   |                region of the farm               |                           |
+
+As present in the table, the data set consists of 16 numeric variables and 4 categorical variables. The target variable for the regression modeling will be *goutput*, what represents the gross output of rice in *kg* for the respective rice farm. The variable *noutput* is a linear transformation of *goutput* as it represents *goutput* decreased by the harvesting costs. Therefore it is not used for the modeling because it would violate the multicollinearity assumption.
+In the following some explorative data analysis will be made to get to get a first impression of the distribution of the individual variables.
+
+## 1.1 Numerical Variables
+The following figure shows boxplots for the used materials and the prices paid for the materials of the respective rice farms. The boxplots for the materials show, that the distribution of all materials is right-skewed. The spread width of seed is the lowest, followed by phosphate and urea. Therefore *urea* also has the highest variance with 16166 followed by *phosphate* with 2264 and *seed* with 2048. The distribution of *urea* indicates that rice farms in Indonesia may use urea very different, caused by e.g. the bimas-status. The bimas program is a rice intensification program by the government to support local rice production by providing high-yield rice seeds as well as technical assistance. 
+&nbsp;
+If we look at the prices for phosphate *pphosph* and urea *purea*, we can see a slight left-skewed distribution with low variance (75 for *purea* and 86 for *pphosph*). In contrast to that, the prices for seeds scatter much. The distribution of *pseed* is strongly right-skewed as well as the distribution for the rice price *price*. The price for the rice also scatters, but less than *pseed*. The two prices have a correlation of 0.67. Of course, the price of seeds affects the selling price of rice. The prices may fluctuate due to seasonal or regional factors and have an impact on each other.
+&nbsp;
+The distribution of labor hours is also slightly skewed to the right. Overall, the dispersion is lowest for the *famlabor*. For *hiredlabor* and *totlabor* we have a similar spread, but *totlabor* has a higher level overall. This is caused by the *hiredlabor* which is a subset of *totlabor*. 
+
+
 \newpage
+
+
+```{r, fig.width=10, fig.height=9}
+
+df_boxplot_materials = data.frame(
+  feature=c(rep("seed", 1026), rep("urea", 1026),rep("phosphate", 1026)), 
+  material=c(RiceFarms$seed, RiceFarms$urea, RiceFarms$phosphate))
+
+
+bpl_materials = ggplot(df_boxplot_materials, aes(x=feature, y=material, fill=feature)) + 
+  geom_boxplot() + 
+  ylim(0, 600) + 
+  ggtitle('Distribution of materials') + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+df_boxplot_price_materials = data.frame(
+  feature=c(rep("price seed", 1026), rep("price urea", 1026),rep("price phosphate", 1026), rep("price rice", 1026)), 
+  rupiah_per_kg=c(RiceFarms$pseed, RiceFarms$purea, RiceFarms$pphosph, RiceFarms$price))
+
+
+bpl_price_materials = ggplot(df_boxplot_price_materials, aes(x=feature, y=rupiah_per_kg, fill=feature)) + 
+  geom_boxplot() + 
+  ggtitle('Distribution of material prices') + 
+  theme(plot.title = element_text(hjust = 0.5))
+  # + ylim(0, 400)
+
+df_boxplot_labor = data.frame(
+  labor=c(rep("hired labor", 1026), rep("family labor", 1026),rep("total labor", 1026)), 
+  hours=c(RiceFarms$hiredlabor, RiceFarms$famlabor, RiceFarms$totlabor))
+
+
+bpl_labor = ggplot(df_boxplot_labor, aes(x=labor, y=hours, fill=labor)) + 
+  geom_boxplot() + 
+  ggtitle('Distribution of labor hours') + 
+  theme(plot.title = element_text(hjust = 0.5)) + 
+  ylim(0,500)
+
+
+grid.arrange(bpl_materials, bpl_price_materials, bpl_labor, ncol=1, nrow =3)
+
+```
+
+\newpage
+
+## 1.1 Categorical Variables
+
+The following mosaic plot shows the distribution of of the categorical variables *varietes*, *region* and *bimas*. Overall, all regions are roughly equally represented in the data set. We can detect, that most of the farmers with the bimas status *yes* and *mixed* are located in the region *ciwangi*. The distribution of the different varieties is strongly dependent on the region. While the *high* varieties have the biggest share in the regions *wargabinangun* and *langan*, the *traditional* varieties are dominating the regions *gunungwangi*, *malausma* and *ciwangi*. The *mixed* varities are only used slightly in all regions.
+&nbsp;
+&nbsp;
+&nbsp;
+
+
+```{r, fig.width=7, fig.height=6}
+
+df_cat = RiceFarms[,c("region", "varieties", "bimas")]
+
+test = ggplot(df_cat) +
+  ggtitle("Mosaic Plot for varieties, region and bimas") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_mosaic(aes(x = product(varieties, region), fill=bimas, offset = 0.2))
+
+breaks = ggplot_build(test)$layout$panel_params[[1]]$x$get_breaks()
+labels=c("wargabinangun","", "","","langan", "","gunungwangi","", "",
+         "malausma","", "","sukaambit","", "",
+         "ciwangi","","")
+
+ggplot(df_cat) +
+  ggtitle("Mosaic Plot for varieties, region and bimas") + 
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_mosaic(aes(x = product(varieties, region), fill=bimas, offset = 0.2)) +
+  scale_x_productlist(breaks=breaks, labels=labels) + 
+  xlab("region")
+  
+
+```
+
+<br />
+<br />
+<br />
+
+\newpage
+
+To test wheter the categorical variables have impact on our target variable *goutput*, one- and two-sided anovas are performed. The results of these are summarized in the following table:
+
+
+
+|         formula        | F-value |  p-value | significant |
+|:----------------------:|:-------:|:--------:|:-----------:|
+|         region         |  22.981 |  < 2e-16 |     yes     |
+|        varieties       |  11.764 | 8.94e-06 |     yes     |
+|          bimas         |  14.817 | 4.57e-07 |     yes     |
+|     region+varietes    |  3.847  | 3.96e-05 |     yes     |
+|      region+bimas      |  5.651  | 2.94e-08 |     yes     |
+|     varieties+bimas    |  0.791  |   0.531  |      no     |
+| region+varieties+bimas |  0.860  |   0.580  |      no     |
+
+
+
+The anova outputs show, that all of the categorical variables have a significant effect on *goutput*. The null hypothesis, that the mean of *goutput* is the same across the groups is rejected. The results of the two-sided anovas also show a significant interaction effect on *goutput*. While the interaction effect from the *region* with *varieties* and *bimas* is significant, the interaction effect of *varieties* and *bimas* and the interaction effect of all three variables is not.
+
+
+
+
 
 
 # 2 First Model
