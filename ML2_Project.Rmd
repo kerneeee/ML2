@@ -199,7 +199,6 @@ To test wheter the categorical variables have impact on our target variable *gou
 
 The anova outputs show, that all of the categorical variables have a significant effect on *goutput*. The null hypothesis, that the mean of *goutput* is the same across the groups is rejected. The results of the two-sided anovas also show a significant interaction effect on *goutput*. While the interaction effect from the *region* with *varieties* and *bimas* is significant, the interaction effect of *varieties* and *bimas* and the interaction effect of all three variables is not.
 
-=======
 ## 1.3 Variable selection and transformation
 
 The performance of the regression modeling is highly dependent of the variable selection and transformation. Therefore a suitable choice is very important. 
@@ -207,8 +206,6 @@ The variable *noutput* is a linear transformation of *goutput* as it represents 
 The variable *size* also correlates *strongly* with the target variable. This can be intuitively explained by the fact that a larger rice field naturally always produces a higher yield. Since the variables *seed*, *urea*, *phosphate* and *pesticide* are dependent on size, they are transformed into per-hectare sizes by dividing them with the respective hectare size of the farm. The *size* variable is not used for further modeling. \
 The variables *famlabor* and *hiredlabor* are subsets of the variable *totlabor* and are therefore transformed into the share of *totlabor* by dividing them with the amount of *totlabor*. The variable *totlabor* is after that transformed to a per-hectare size by dividing it with the *size*.
 The variable *wage* follows a bimodal distribution. Therefore it is transformed into a binary variable, which indicates if the respective value is over or under 100. 
-
-
 
 ## 1.4 Model evaluation
 
