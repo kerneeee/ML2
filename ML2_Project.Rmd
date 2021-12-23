@@ -268,6 +268,7 @@ set.seed(20211207)
 n <- nrow(RiceFarms)
 train <- sample(1:n,0.8*n)
 test <- setdiff(1:n,train)
+set.seed(20211207)
 val <- sample(train,length(test))
 train <- setdiff(train,val)
 ```
@@ -288,7 +289,7 @@ MSE <- function(model, data, split=train){
 \newpage
 
 # 3 Second Model
-## GAM
+## GAM (Generalized Additive Model)
 
 ```{r}
 #size
@@ -624,7 +625,9 @@ gam17.4 <- gam(log(goutput)~
 
 ## GAM Comparison
 
-**table for model selection**
+**table for model selection:** The following table summarizes the variable selection process for the final GAM model. Starting from the top of the table we add for each grouped row in the table another variable with different representations of the variable for example checking whether log transformation yields any better results than using the variable as is. The results are mainly compared by using the p-value from the model summary, which is telling if the variable is significant important. We will use a p-value of 5% for the evaluation of variable significance. To compare models we will use the deviance. In special cases additional anova tests are performed to compare larger models with smaller ones. In addition we list other metrics like MSE on the training and validation data as well as AIC. For each grouped row, the last model is the chosen model for further analysis.
+
+
 ```{r }
 #results='asis'
 options(tinytex.verbose = TRUE)
@@ -633,7 +636,7 @@ options(tinytex.verbose = TRUE)
 #table for model selection
 #https://cran.r-project.org/web/packages/kableExtra/vignettes/awesome_table_in_html.html#Overview
 
-gams <- list(gam17.4,gam17.2, gam17,gam16, gam15, gam14, gam13.2, gam13, gam12.5, gam12.3,gam12.2, gam12, gam11, gam10.1, gam10, gam9, gam8 , gam6.1, gam6, gam5.1, gam5, gam4, gam3, gam2, gam1)
+gams <- list(gam17.4,gam17.2, gam17,gam16, gam15, gam14, gam13.2, gam13, gam12.5, gam12.3,gam12.2, gam12, gam11, gam10.1, gam10, gam9, gam8 , gam6, gam6.1,  gam5, gam5.1,  gam3, gam4, gam2, gam1)
 gams <- rev(gams)
 
 l <- length(gams)
@@ -684,31 +687,34 @@ kbl(model_perf, caption = "GAM comparison for variable selection") %>%
 
 ```
 
-gam2 is better, so we will use logarithm of size
+**Table columns:**
 
-plot.gam for urea: slope at beginning of urea size => reduce df?
+* var: the variable that is added
+* df: degrees of freedom 
+* MSE.train: MSE on training data
+* MSE.val: MSE on validation data
+* dev: residual deviance (goodness of fit)
+* aic: Akaike information criterion
+* p_val_p: parametric p-value for last added variable
+* p_val_np: non-parametric p-value for last added variable
+* df_np: non-parametric degrees of freedom for last added variable
 
-phosphate:
-this variable has lots of zeros as values. So we can not use directly log transformation because log of 0 is -inf. According to : https://discuss.analyticsvidhya.com/t/methods-to-deal-with-zero-values-while-performing-log-transformation-of-variable/2431 log(x+1) transformation is the best way to avoid errors created  by log transformation and is widely used among data scientists. So we will use this approach.
+**Variable selection explanation:**
 
-pesticide:
-Anova for Non-Parametric Effects p-value = 0.0001351187 => keep variable in model
-Anova for Parametric Effects p-value=0.433418 => reduce df of pest_size
-
-**price information**
-
-```{r }
-#Anova test
-#anova()
-```
-
-**check categorical variables**
-
-varieties: p-value 0.103104 => not enough evidence that this variable is significantly important based on a 5% significance level. BUT MSE decreases!
-
-status: p-value 0.212109  => not important
-
-**varieties**
+* size, labour, and urea: we will use logarithm of these variables, because of a smaller deviance
+* phosphor: this variable has lots of zeros as values. So we can not use directly log transformation because log of 0 is -inf. log(x+1) transformation is the best way to avoid errors created  by log transformation and is widely used among data scientists. So we will use this approach. We will use logarithm of phosph_size, because of a smaller deviance.
+* seed: we will use seed as is, because of a smaller deviance.
+* pesticide: non-parametric p-value is > 0.05 so we decrease df to achieve more suitable fit.
+* price, family labour: Both variables are significant important for the model.
+* material prices: 
+    * pseed: p-value > 0.05, thus we do not use this variable
+    * pphosph: p-value < 0.05
+    * pphosph + purea: p-value < 0.05, but the anova test comparing smaller including only pphosph with larger model pphosp + purea yields a p-value of 
+* wage:
+* categorical variables: 
+    + bimas and bimas+region: p-value > 0.05, 
+    + bimas+varieties and bimas+status: p-value < 0.05 
+* final model: we check again for excluded variables after some more variables have been added if the results change. purea has a p-value of 0.05 and performing an anova test for varieties we can see that there is a significant difference between the two models. 
 
 ```{r }
 #Anova test
@@ -746,7 +752,7 @@ mse_plot <- ggplot(df.long[df.long$metric!="dev",])+
   aes(x= var, y=value, group=metric, color = metric)+
   geom_line()+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
-        axis.title.x = element_blank())
+        axis.title.x = element_blank(), legend.position = c(0.8, 0.8))
 
 dev_plot <- ggplot(df.long[df.long$metric=="dev",])+
   aes(x=var, y=value, group=1)+
@@ -777,7 +783,7 @@ gam17.4_res <- data.frame(fitted=fitted(gam17.4),residuals=residuals(gam17.4))
 gam1_res_plot <- ggplot(gam1_res)+
   aes(x=fitted,y=residuals)+
   geom_point(alpha = 3/10)+
-  theme(plot.subtitle=element_text(size=10))+
+  theme(plot.subtitle=element_text(size=8))+
   labs(title = "Residual comparison", subtitle = "s(log(size))")
 
   #labs(title = "Fitted vs. Residuals", subtitle = expression(atop("1st model", paste("s(log(size))"))))
@@ -786,14 +792,14 @@ gam2_res_plot <- ggplot(gam2_res)+
   aes(x=fitted,y=residuals)+
   ylim(ylim) +
   geom_point(alpha = 3/10) +
-  theme(plot.subtitle=element_text(size=10))+
+  theme(plot.subtitle=element_text(size=8))+
   labs(subtitle = "s(log(size)) + s(log(totlab_size))")
 
 gam17.4_res_plot <- ggplot(gam17.4_res)+
   aes(x=fitted,y=residuals)+
   ylim(ylim) +
   geom_point(alpha = 3/10) +
-  theme(plot.subtitle=element_text(size=10))+
+  theme(plot.subtitle=element_text(size=8))+
   labs(subtitle = "Final model")
   
 
@@ -801,9 +807,18 @@ gam1_res_plot+gam2_res_plot+gam17.4_res_plot
 
 ```
 
-## Final model visualization
+## Final GAM
 
-```{r fig.height=10, fig.align='center'}
+```{r}
+summary(gam17.4)$call
+#summary(gam17.4)$dispersion
+#summary(gam17.4)$df
+#summary(gam17.4)$deviance.resid
+#summary(gam17.4)$deviance
+```
+\newpage
+**Final GAM visualization**
+```{r fig.height=8, fig.align='center'}
 par(mfrow=c(7,2), 
     oma = c(5,4,1,1) + 0.1,
     mar = c(2,3.5,2,2) + 0.1)
