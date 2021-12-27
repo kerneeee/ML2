@@ -450,7 +450,7 @@ gam12.2 <- gam(log(goutput)~
                  s(seed_size)+
                  s(pest_size)+
                  s(price)+
-                 s(fam_ratio)+
+                 #s(fam_ratio)+
                  s(pseed), data = RiceFarms[train,])
 
 gam12.3 <- gam(log(goutput)~
@@ -461,7 +461,7 @@ gam12.3 <- gam(log(goutput)~
                  s(seed_size)+
                  s(pest_size)+
                  s(price)+
-                 s(fam_ratio)+
+                 #s(fam_ratio)+
                  s(pphosph), data = RiceFarms[train,])
 
 gam12.5  <- gam(log(goutput)~
@@ -472,7 +472,7 @@ gam12.5  <- gam(log(goutput)~
                  s(seed_size)+
                  s(pest_size)+
                  s(price)+
-                 s(fam_ratio)+
+                 #s(fam_ratio)+
                  s(pphosph)+
                  s(purea), data = RiceFarms[train,])
 
@@ -490,7 +490,7 @@ gam13 <- gam(log(goutput)~
                s(seed_size)+
                s(pest_size)+
                s(price)+
-               s(fam_ratio)+
+               #s(fam_ratio)+
                s(pphosph)+
                s(wage), data = RiceFarms[train,])
 
@@ -502,7 +502,7 @@ gam13.2 <- gam(log(goutput)~
                  s(seed_size)+
                  s(pest_size)+
                  s(price)+
-                 s(fam_ratio)+
+                # s(fam_ratio)+
                  s(pphosph)+
                  wage_cat, data = RiceFarms[train,])
 
@@ -519,7 +519,7 @@ gam14 <- gam(log(goutput)~
                s(seed_size)+
                s(pest_size)+
                s(price)+
-               s(fam_ratio)+
+               #s(fam_ratio)+
                s(pphosph)+
                wage_cat+
                bimas, data = RiceFarms[train,])
@@ -534,11 +534,11 @@ gam15 <- gam(log(goutput)~
                s(log(size))+
                s(log(totlab_size))+
                s(log(urea_size)) +
-               s(log(phosph_size+1))+
+               s(log(phosph_size+1)) +
                s(seed_size)+
                s(pest_size)+
                s(price)+
-               s(fam_ratio)+
+               #s(fam_ratio)+
                s(pphosph)+
                wage_cat +
                bimas+
@@ -558,7 +558,7 @@ gam16 <- gam(log(goutput)~
                s(seed_size)+
                s(pest_size)+
                s(price)+
-               s(fam_ratio)+
+               #s(fam_ratio)+
                s(pphosph)+
                wage_cat +
                bimas+
@@ -577,7 +577,7 @@ gam17 <- gam(log(goutput)~
                s(seed_size)+
                s(pest_size)+
                s(price)+
-               s(fam_ratio)+
+               #s(fam_ratio)+
                s(pphosph)+
                wage_cat +
                bimas +
@@ -597,11 +597,11 @@ gam17.2 <- gam(log(goutput)~
                s(seed_size)+
                s(pest_size)+
                s(price)+
-               s(fam_ratio)+
+               #s(fam_ratio)+
                s(pphosph)+
                wage_cat +
                bimas +
-               region +
+               #region +
                s(purea), data = RiceFarms[train,])
 
 #adding varieties once again
@@ -613,11 +613,11 @@ gam17.4 <- gam(log(goutput)~
                s(seed_size)+
                s(pest_size)+
                s(price)+
-               s(fam_ratio)+
+               #s(fam_ratio)+
                s(pphosph)+
                wage_cat +
                bimas +
-               region +
+               #region +
                s(purea)+
                varieties, data = RiceFarms[train,])
 
@@ -626,6 +626,8 @@ gam17.4 <- gam(log(goutput)~
 ## GAM Comparison
 
 **table for model selection:** The following table summarizes the variable selection process for the final GAM model. Starting from the top of the table we add for each grouped row in the table another variable with different representations of the variable for example checking whether log transformation yields any better results than using the variable as is. The results are mainly compared by using the p-value from the model summary, which is telling if the variable is significant important. We will use a p-value of 5% for the evaluation of variable significance. To compare models we will use the deviance. In special cases additional anova tests are performed to compare larger models with smaller ones. In addition we list other metrics like MSE on the training and validation data as well as AIC. For each grouped row, the last model is the chosen model for further analysis.
+
+Forward selection (from James p. 79) : We begin with a model, that contains the variable with highest correlation to our dependent variable goutput, which is size. We then add different representations of one variable and add those to the model, which result in the lowest deviance for the new two-variable model. This approach is continued until all variables have been tried out. Forward selection is a greedy approach, and might include variables early that later become redundant.
 
 
 ```{r }
@@ -672,17 +674,17 @@ model_perf$var[25] <- "s(purea)+varieties"
 kbl(model_perf, caption = "GAM comparison for variable selection") %>%
   kable_paper("hover", full_width = FALSE) %>%
   pack_rows("size", 1, 2) %>%
-  pack_rows("labour", 3, 4) %>%
-  pack_rows("urea", 5, 6) %>%
-  pack_rows("phosphor", 7, 8) %>%
-  pack_rows("seed", 9, 10) %>%
-  pack_rows("pesticide", 11, 12) %>%
-  pack_rows("price", 13, 13) %>%
-  pack_rows("family labour", 14, 14) %>%
-  pack_rows("price info", 15, 17) %>%
-  pack_rows("wage", 18, 19) %>%
-  pack_rows("categorical variables", 20, 23) %>%
-  pack_rows("final model", 24, 25) %>%
+  pack_rows("size+labour", 3, 4) %>%
+  pack_rows("size+labour+urea", 5, 6) %>%
+  pack_rows("size+labour+urea+phosphor", 7, 8) %>%
+  pack_rows("size+labour+urea+phosphor+seed", 9, 10) %>%
+  pack_rows("size+labour+urea+phosphor+seed+pesticide", 11, 12) %>%
+  pack_rows("size+labour+urea+phosphor+seed+pesticide+price", 13, 13) %>%
+  pack_rows("size+labour+urea+phosphor+seed+pesticide+price+family_labour", 14, 14) %>%
+  pack_rows("size+labour+urea+phosphor+seed+pesticide+price+price_info", 15, 17) %>%
+  pack_rows("size+labour+urea+phosphor+seed+pesticide+price+price_info+wage", 18, 19) %>%
+  pack_rows("size+labour+urea+phosphor+seed+pesticide+price+price_info+wage+categorical", 20, 23) %>%
+  pack_rows("size+labour+urea+phosphor+seed+pesticide+price+price_info+wage+categorical+excluded", 24, 25) %>%
   landscape()
 
 ```
@@ -722,8 +724,6 @@ anova(gam17.2,gam17.4)
 ```
 \newpage
 
-**MSE and deviance visualization**
-
 ```{r}
 gams <- list(gam17.4,gam17.2, gam17, gam14, gam13.2,gam12.3,gam12, gam11, gam10, gam9, gam6, gam5, gam3, gam2)
 gams <- rev(gams)
@@ -761,15 +761,19 @@ dev_plot <- ggplot(df.long[df.long$metric=="dev",])+
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
         axis.title.x = element_blank())
   
-mse_plot + dev_plot
+patch1 <- mse_plot + dev_plot
+
+patch1 + plot_annotation(
+  title = 'Model performance'
+)
 ```
-**Residual Plot**
 
 ```{r fig.height=3.5, fig.align = "center"}
 #library(ggfortify)
 #autoplot(gam17.4)
 
-ylim <- c(min(residuals(gam1)), max(residuals(gam1))) 
+ylim <- c(min(residuals(gam1)), max(residuals(gam1)))
+xlim <- c(min(fitted(gam17.4)), max(fitted(gam17.4)))
 
 #par(mfrow=c(1,3))
 #plot(fitted(gam1),residuals(gam1))
@@ -782,47 +786,101 @@ gam17.4_res <- data.frame(fitted=fitted(gam17.4),residuals=residuals(gam17.4))
 
 gam1_res_plot <- ggplot(gam1_res)+
   aes(x=fitted,y=residuals)+
+  xlim(xlim)+
   geom_point(alpha = 3/10)+
-  theme(plot.subtitle=element_text(size=8))+
-  labs(title = "Residual comparison", subtitle = "s(log(size))")
+  theme(plot.subtitle=element_text(size=7))+
+  labs(subtitle = "s(log(size))")
 
   #labs(title = "Fitted vs. Residuals", subtitle = expression(atop("1st model", paste("s(log(size))"))))
 
 gam2_res_plot <- ggplot(gam2_res)+
   aes(x=fitted,y=residuals)+
   ylim(ylim) +
+  xlim(xlim)+
   geom_point(alpha = 3/10) +
-  theme(plot.subtitle=element_text(size=8))+
+  theme(plot.subtitle=element_text(size=7))+
   labs(subtitle = "s(log(size)) + s(log(totlab_size))")
 
 gam17.4_res_plot <- ggplot(gam17.4_res)+
   aes(x=fitted,y=residuals)+
   ylim(ylim) +
+  xlim(xlim) +
   geom_point(alpha = 3/10) +
-  theme(plot.subtitle=element_text(size=8))+
+  theme(plot.subtitle=element_text(size=7))+
   labs(subtitle = "Final model")
   
 
-gam1_res_plot+gam2_res_plot+gam17.4_res_plot
+patch <- gam1_res_plot+gam2_res_plot+gam17.4_res_plot
+
+patch + plot_annotation(
+  title = 'Residual comparison'
+)
 
 ```
-
+\newpage
 ## Final GAM
 
 ```{r}
-summary(gam17.4)$call
+#summary(gam17.4)$call
+formula(gam17.4)
 #summary(gam17.4)$dispersion
 #summary(gam17.4)$df
 #summary(gam17.4)$deviance.resid
 #summary(gam17.4)$deviance
 ```
+**R-squared (R²)**: is a statistical measure that represents the proportion of the variance for a dependent variable that's explained by an independent variable or variables in a regression model. Essentially, an R-Squared value of 0.9 would indicate that 90% of the variance of the dependent variable being studied is explained by the variance of the independent variable.
+
+$R^2 = 1- \frac{Unexplained\:Variation}{Total\:Variation}$
+
+```{r}
+r_sq <- function(model){
+  UEV <- length(train)*MSE(gam17.4, RiceFarms)
+  TV <- sum((RiceFarms$goutput[train]-mean(RiceFarms$goutput[train]))^2)
+  return(1-UEV/TV)
+}
+```
+
+R² = `r r_sq(gam17.4)`
+
+**Adjusted R-Squared**: The adjusted R-squared compares the descriptive power of regression models that include diverse numbers of predictors. Every predictor added to a model increases R-squared and never decreases it. Thus, a model with more terms may seem to have a better fit just for the fact that it has more terms, while the adjusted R-squared compensates for the addition of variables and only increases if the new term enhances the model above what would be obtained by probability and decreases when a predictor enhances the model less than what is predicted by chance.
+
+Source: https://www.investopedia.com/terms/r/r-squared.asp
+https://www.researchgate.net/post/How-can-I-get-the-adjusted-r-squared-value-of-GAM-model
+
+$adjR^2 = 1- \frac{(1-R^2)*(n-1)}{n-p-1}$
+
+n = total sample size
+p = number of predictors
+
+```{r}
+r_sq_adj <- function(model){
+  R2adj <- 1- ((1 - r_sq(model)) * (length(model$y) - 1)/(length(model$y) - length(model$coefficients) - 1))
+  return(R2adj)
+}
+```
+
+adjR²= `r r_sq_adj(gam17.4)`
+
 \newpage
 **Final GAM visualization**
 ```{r fig.height=8, fig.align='center'}
+
+gam_num <- c("s(log(size))", "s(log(totlab_size))", "s(log(urea_size))" , "s(log(phosph_size + 1))" , "s(seed_size)", "s(pest_size)" , "s(price)" , "s(pphosph)", "s(purea)")
+
+#gam_cat <-  c("wage_cat", "bimas", "region", "varieties")
+gam_cat <-  c("wage_cat", "bimas", "varieties")
+
 par(mfrow=c(7,2), 
     oma = c(5,4,1,1) + 0.1,
-    mar = c(2,3.5,2,2) + 0.1)
-plot.Gam(gam17.4, residuals = TRUE, se=TRUE, col="lightblue", cex.lab = 0.9)
+    mar = c(2,3.5,2,2) + 0.1,
+    mgp = c(2, 0.5, 0)) #The default is c(3, 1, 0).
+plot.Gam(gam17.4, residuals = TRUE, se=TRUE, terms = gam_num  , col="lightblue", cex.lab = 0.8)
+
+for(i in 1:length(gam_cat)){
+  plot.Gam(gam17.4, residuals = TRUE, se=TRUE, terms = gam_cat[i] , col="lightblue", cex.lab = 0.8, xlab="")
+  title(xlab=gam_cat[i], line=0.5, cex.lab=1.2)
+}
+
 ```
 
 ```{r}
