@@ -45,6 +45,10 @@ library(kableExtra)
 library(formattable)
 library(ggplot2)
 library(productplots)
+library(plm)
+library(glmnet)
+library(leaps)
+ 
 ```
 
 ```{r constants}
@@ -286,8 +290,496 @@ MSE <- function(model, data, split=train){
 
 # 2 First Model
 
-\newpage
+The first model to present and evaluate is called Lasso Regression.
 
+## Lasso Regression
+As in most of the regression types, it minimizes the residual sum of squares (short: RSS). But in addition to that a penalty term is included in the formula which shrinks some parameters coefficient estimates to zero.
+$$
+R S S+\lambda \sum_{j=1}^{p}\left|\widehat{\beta}_{j}\right|
+$$
+,where $\lambda$ is a hyperparameter, p are the parameters and $\beta$ the parameter coefficient estimates. The sum of the coefficents starts at $j=1$ because the $\beta_0$ is no parameter coefficient estimate, it is the bias of the model. Furthermore the absolute values of the estimates are calculated and summarized. As you can see from the equation, the lasso regression turns into a simple linear regression if the $\lambda$ is zero. \newline
+The goal and intention of the lasso regression is to create a sparse model which makes it easier to interpret. 
+
+### Feature Selection
+Before starting with the actual regression, we can investigate which of the features could be important for predicting the goutput of the data. This step is helpful as the number of features in the dataset is over twenty. \newline
+The method used for selecting the variables is the forward selection. The package leaps provides therefore a function regsubsets for linear models. It takes the target variable and the features of the dataset as input and gives some hints which variables could fit best to predict the goutput. The used algorithm optimizes the Mallows $C_p$ statistics which is related to the AIC. \newline
+There are more input parameters available for the function, i.e. the maximum size of a subset, the weight vector, the number of the best subsets or the method of variable selection (i.e. forward selection, backward selection, etc.). \newline
+The following graphics show the results of the analysis.  
+```{r}
+feature_selection<-function(data){
+  regfit.full<-regsubsets(goutput~.,data,nvmax=15)
+  reg.sum<<-summary(regfit.full)
+  
+  dat<-data.frame(rss=reg.sum$rss, adjr2=reg.sum$adjr2,cp=reg.sum$cp,bic=reg.sum$bic)
+  
+  rss_plot<- ggplot(dat)+
+    aes(x=seq(1:length(rss)),y=rss)+
+    geom_line()+
+    xlab('Number of Variables')+
+    ylab('RSS')
+  
+  adj_r2_max = which.max(reg.sum$adjr2) # 11
+
+  adj_r_plot<-ggplot(dat)+
+    aes(x=seq(1:length(adjr2)),y=adjr2)+
+    geom_line()+
+    geom_point(aes(x=adj_r2_max,y=adjr2[adj_r2_max]))+
+    xlab('Number of Variables')+
+    ylab('Adjusted RSq')
+  
+  cp_min = which.min(dat$cp) 
+
+  cp_plot<-ggplot(dat)+
+    aes(x=seq(1:length(cp)),y=cp)+
+    geom_line()+
+    geom_point(aes(x=cp_min,y=cp[cp_min]))+
+    xlab('Number of Variables')+
+    ylab('Cp')
+  
+  bic_min = which.min(reg.sum$bic)
+
+  bic_plot<-ggplot(dat)+
+    aes(x=seq(1:length(bic)),y=bic)+
+    geom_line()+
+    geom_point(aes(x=bic_min,y=bic[bic_min]))+
+    xlab('Number of Variables')+
+    ylab('BIC')
+  
+  patch<-(rss_plot + adj_r_plot)/(cp_plot + bic_plot)
+  
+  patch + plot_annotation(title='Feature Selection')
+}
+
+
+####3. 
+feature_selection(RiceFarms[train,])
+```
+**Explanation:**
+The graphic show the the RSS, the adjusted $R^2$, the $C_p$ statistics and the BIC of the models. \newline
+The metrics help to identify the overall best models of the problem. Each of the metrics show that in general a 3-variable model could be enough as the metrics are getting slightly better as the number of variables increase. Just for the BIC it can be seen that after 7 variables the metric gets worse.\newline
+By investigating the output of the regsubsets, it shows which of the variables are selected to give the best results.
+
+```{r}
+#reg.sum
+```
+The best 3-variable model is selecting size, phosphate and totlabor as the best performing variables. These variables are also in every other greater model. Therefore they are remembered when searching for a optimal model for the lasso regression. Also some other variables like pesticide, variety, wage and region are likely to have an influence on the model. \newline
+
+### Preprocessing
+As a specific package for the lasso regression, the glmnet package, is used, the data needs to be preprocessed. One important step therefore is to transform the qualititative variables like factor variables to dummy variables so the model can use them. The method is relatively simple by creating extra features with binary values. model.matrix is doing this transformation automatically by creating a design matrix out of the data frame. It also needs the information which variables to transform for which an expression is needed. This gives the opportunity to select the wished variables and also to do mathematical transformation like logarithm or polynomial conversion before applying and getting the model matrix for the model.\newline
+In addition to that a scaling option is implemented to test if the model is better when scaling the data. 
+
+```{r}
+prepare_x<-function(expr,scaler=FALSE,center=FALSE){
+  if(scaler){
+    x<-scale(model.matrix(expr,RiceFarms)[,-1],center=center) #creates a matrix and transforms qualitative variables to dummy variables 
+  }
+  else{
+    x<-model.matrix(expr,RiceFarms)[,-1] #creates a matrix and transforms qualitative variables to dummy variables 
+  }
+  return(x)
+}
+x<-prepare_x(goutput~.)
+y<-log(RiceFarms$goutput)
+```
+### Training and Evaluation
+As the input features are transformed properly the lasso regression can be trained. After training the function return a list of models. This is because of the hyperparameter $\lambda$. This allows us to fine tune the model and improve its performance. To do this, a simple 10-fold-cross-validation on the training data is applied which is also included in the package glmnet. But before starting the validation a grid of possible lambdas is prepared to have the possibility to change the spectrum of the lambda parameter. Afterwards a plot is obtained showing the mean cross-validated error depending on the $\lambda$. The dotted lines in the plot are the $\lambda$ which minimizes the mean cross-validated error the most and the $\lambda$ which gives most regularized model such that the cross-validated error is within one standard error. In this task the $\lambda$ with the minimum mean cross-validated error is chosen. \newline
+To evaluate the selected model on the validation data with the chosen $\lambda$ the metrics MSE, BIC, AIC, AICc (modification of AIC as a correction for small sample sizes) and $R^2$ are used. \newline
+As for the glmnet package no known implemented function is found the metrics BIC,AIC, AICc and $R^2$ are implemented therefore manually. The formulas used are:
+
+$$
+\mathrm{BIC}=\chi^{2}+k \ln (n)
+$$
+with 
+$$
+\mathbf{X}^{2}=\text { Null deviance }-\text { Residual deviance }
+$$
+and k as the number of parameters estimated by the model and n the number of observations.
+$$
+\mathrm{AIC}=-\chi^{2}+ 2k
+$$
+
+$$
+\mathrm{AICc}= AIC+\frac{2k(k+1)}{n-k-1}
+$$
+and 
+$$
+\begin{aligned}
+R^{2} &=1-\frac{\text { sum squared regression (SSR) }}{\text { total sum of squares (SST) }} \\
+&=1-\frac{\sum\left(y_{i}-\hat{y}_{i}\right)^{2}}{\sum\left(y_{i}-\bar{y}\right)^{2}}
+\end{aligned}
+$$
+where $y$ are the actual values, $\hat{y}$ the predicted values and $\bar{y}$ the mean value of the $y$. 
+```{r}
+BICAIC<-function(fit){
+  tLL <- fit$nulldev - deviance(fit)
+  k <- fit$df
+  n <- fit$nobs
+  AICc <- -tLL+2*k+2*k*(k+1)/(n-k-1)
+  AIC_ <- -tLL+2*k
+  
+  BIC<-log(n)*k - tLL
+  return(list('AIC'=AIC_,'BIC'=BIC,'AICc'=AICc))
+}
+```
+
+```{r}
+
+prepare_grid<-function(grid_param=c(0,-4,100)){
+  grid <- 10^ seq(grid_param[1],grid_param[2], length =grid_param[3])
+  return(list('grid'=grid))
+}
+
+train_lasso_with_feature<-function(x,y,grid){
+  
+  #Fit train and predict on test set to get the MSE 
+  lasso.mod <-glmnet(x[train,],y[train],alpha=1, lambda =grid , thresh =1e-12)
+  lasso.pred<-predict(lasso.mod ,s=1, newx=x[val,])#s is the lambda because we have a grid of lasso.models
+  #cat('----MSE----:',mean((lasso.pred -y[val])^2))#MSE 
+  
+  return(lasso.mod)
+}
+train_lasso_cv<-function(lasso.mod,x,y,grid){
+  ##Use Cross-Validation to find the best lambda 
+  set.seed(1) 
+  cv.out <-cv.glmnet(x[train,],y[train],lambda=grid,alpha =1) #does 10-fold-CV as default 
+  #plot(cv.out) 
+  bestlam <-cv.out$lambda.min
+
+  best.model<-glmnet(x[train,],y[train],alpha=1, lambda =bestlam , thresh =1e-12)
+  res<-BICAIC(best.model)
+  
+ #Now what is the test MSE with this best lambda
+  lasso.pred.train<-predict(lasso.mod ,s=bestlam ,newx=x[train,]) 
+  lasso.pred<-predict(lasso.mod ,s=bestlam ,newx=x[val,]) 
+  mse.train<-mean((lasso.pred.train -y[train])^2)
+  mse.val<-mean((lasso.pred -y[val])^2)
+  rss<-(lasso.pred-y[val])^2
+  #plot(rss)
+  sst <- sum((y[val] - mean(y[val]))^2)
+  sse <- sum((lasso.pred - y[val])^2)
+  
+  #find R-Squared
+  rsq <- 1 - sse/sst
+  return(list('bestlam'=bestlam,'BIC'=res,'RSS'=rss,'RSq'=rsq,'FITTED'=lasso.pred,'df'=best.model$df,'mse.val'=mse.val,'mse.train'=mse.train))
+}
+```
+
+
+### Model Selection
+After setting the environment and the criterions of the training and evaluating of models, the best model can be selected out of the possible feature subsets. As indicated at the beginning of the Feature Selection section, the variable size, totlabor and phosphate are used to start with. However, this is also done sequentially to obtain the metrics of each model. For the other variables mentioned, this preselection is continued. Additional mathematical transformations of the variables are also considered and included. In order to provide as much variation as possible, the variables are also compared with their size-scaled correspondents. The results of the evaluation are stored in a table and assessed. 
+```{r}
+prep<-prepare_grid()
+
+x<-prepare_x(goutput~log(size)+log(seed)) 
+lasso.model.1<-train_lasso_with_feature(x,y,prep$grid)
+fitted.1<-train_lasso_cv(lasso.model.1,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+seed)
+lasso.model.2<-train_lasso_with_feature(x,y,prep$grid)
+fitted.2<-train_lasso_cv(lasso.model.2,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+seed_size)
+lasso.model.3<-train_lasso_with_feature(x,y,prep$grid)
+fitted.3<-train_lasso_cv(lasso.model.3,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size))
+lasso.model.4<-train_lasso_with_feature(x,y,prep$grid)
+fitted.4<-train_lasso_cv(lasso.model.4,x,y,prep$grid)
+####log(seed_size) better
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+log(totlabor))
+lasso.model.5<-train_lasso_with_feature(x,y,prep$grid)
+fitted.5<-train_lasso_cv(lasso.model.5,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlabor)
+lasso.model.6<-train_lasso_with_feature(x,y,prep$grid)
+fitted.6<-train_lasso_cv(lasso.model.6,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+log(totlab_size))
+lasso.model.7<-train_lasso_with_feature(x,y,prep$grid)
+fitted.7<-train_lasso_cv(lasso.model.7,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size)
+lasso.model.8<-train_lasso_with_feature(x,y,prep$grid)
+fitted.8<-train_lasso_cv(lasso.model.8,x,y,prep$grid)
+###normal totlab_size better
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+urea)
+lasso.model.9<-train_lasso_with_feature(x,y,prep$grid)
+fitted.9<-train_lasso_cv(lasso.model.9,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea))
+lasso.model.10<-train_lasso_with_feature(x,y,prep$grid)
+fitted.10<-train_lasso_cv(lasso.model.10,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+urea_size)
+lasso.model.11<-train_lasso_with_feature(x,y,prep$grid)
+fitted.11<-train_lasso_cv(lasso.model.11,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea_size))
+lasso.model.12<-train_lasso_with_feature(x,y,prep$grid)
+fitted.12<-train_lasso_cv(lasso.model.12,x,y,prep$grid)
+####log(urea) better
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat)
+lasso.model.13<-train_lasso_with_feature(x,y,prep$grid)
+fitted.13<-train_lasso_cv(lasso.model.13,x,y,prep$grid)
+####better than before
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+phosphate)
+lasso.model.14<-train_lasso_with_feature(x,y,prep$grid)
+fitted.14<-train_lasso_cv(lasso.model.14,x,y,prep$grid)
+####worse than before
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed)+log(totlabor)+log(urea)+log(phosphate+1))
+lasso.model.15<-train_lasso_with_feature(x,y,prep$grid)
+fitted.15<-train_lasso_cv(lasso.model.15,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed)+log(totlabor)+log(urea)+phosph_size)
+lasso.model.16<-train_lasso_with_feature(x,y,prep$grid)
+fitted.16<-train_lasso_cv(lasso.model.16,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed)+log(totlabor)+log(urea)+log(phosph_size+1))
+lasso.model.17<-train_lasso_with_feature(x,y,prep$grid)
+fitted.17<-train_lasso_cv(lasso.model.17,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat+region)
+lasso.model.18<-train_lasso_with_feature(x,y,prep$grid)
+fitted.18<-train_lasso_cv(lasso.model.18,x,y,prep$grid)
+####better than before
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat+region+pesticide)
+lasso.model.19<-train_lasso_with_feature(x,y,prep$grid)
+fitted.19<-train_lasso_cv(lasso.model.19,x,y,prep$grid)
+```
+```{r}
+
+####better
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat+region+log(pesticide+1))
+lasso.model.20<-train_lasso_with_feature(x,y,prep$grid)
+fitted.20<-train_lasso_cv(lasso.model.20,x,y,prep$grid)
+####slightly better
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat+region+pest_size)
+lasso.model.21<-train_lasso_with_feature(x,y,prep$grid)
+fitted.21<-train_lasso_cv(lasso.model.21,x,y,prep$grid)
+###better
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat+region+log(pest_size+1))
+lasso.model.22<-train_lasso_with_feature(x,y,prep$grid)
+fitted.22<-train_lasso_cv(lasso.model.22,x,y,prep$grid)
+###worse
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat+region+pest_size+price)
+lasso.model.23<-train_lasso_with_feature(x,y,prep$grid)
+fitted.23<-train_lasso_cv(lasso.model.23,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat+region+pest_size+log(price))
+lasso.model.24<-train_lasso_with_feature(x,y,prep$grid)
+fitted.24<-train_lasso_cv(lasso.model.24,x,y,prep$grid)
+####slightly better
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat+region+pest_size+log(price)+fam_ratio)
+lasso.model.25<-train_lasso_with_feature(x,y,prep$grid)
+fitted.25<-train_lasso_cv(lasso.model.25,x,y,prep$grid)
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat+region+pest_size+log(price)+I(sqrt(-log(fam_ratio))))
+lasso.model.26<-train_lasso_with_feature(x,y,prep$grid)
+fitted.26<-train_lasso_cv(lasso.model.26,x,y,prep$grid)
+####worse
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat+region+pest_size+log(price)+varieties)
+lasso.model.27<-train_lasso_with_feature(x,y,prep$grid)
+fitted.27<-train_lasso_cv(lasso.model.27,x,y,prep$grid)
+####better
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat+region+pest_size+log(price)+varieties+bimas)
+lasso.model.28<-train_lasso_with_feature(x,y,prep$grid)
+fitted.28<-train_lasso_cv(lasso.model.28,x,y,prep$grid)
+####worse
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat+region+pest_size+log(price)+varieties+purea)
+lasso.model.29<-train_lasso_with_feature(x,y,prep$grid)
+fitted.29<-train_lasso_cv(lasso.model.29,x,y,prep$grid)
+####better
+```
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat+region+pest_size+log(price)+varieties+log(purea))
+lasso.model.30<-train_lasso_with_feature(x,y,prep$grid)
+fitted.30<-train_lasso_cv(lasso.model.30,x,y,prep$grid)
+####better
+
+```
+
+```{r}
+options(tinytex.verbose = TRUE)
+
+lassos <- seq(1:30)
+
+l <- length(lassos)
+var <- rep(NA, l)
+df <- rep(NA, l)
+MSE.train <- rep(NA, l)
+MSE.val <- rep(NA, l)
+aic <- rep(NA, l)
+aicc<-rep(NA, l)
+bic<- rep(NA, l)
+r_sq<- rep(NA, l)
+
+for (i in 1:l){
+  fitted<-get(eval(paste0('fitted.',lassos[[i]],sep='')))
+  model.name<-get(eval(paste0('lasso.model.',lassos[[i]],sep=''))) 
+  var[i] <- dimnames(tail(coefficients(model.name,s=fitted$bestlam), n=1))[[1]]
+  df[i] <-  fitted$df
+  MSE.train[i] <- round(fitted$mse.train,digits=4)
+  MSE.val[i] <- round(fitted$mse.val,digits=4) 
+  aic[i] <- round(fitted$BIC$AIC,1)
+  aicc[i] <- round(fitted$BIC$AICc,1)
+  bic[i] <- round(fitted$BIC$BIC,1) 
+  r_sq[i] <- round(fitted$RSq,digits=4)
+}
+
+model_perf <- data.frame(var, df, MSE.train, MSE.val, aic, aicc, bic, r_sq)
+#colnames(model_perf) <- c("var","df","MSE.train","MSE.val","dev","aic","p_val_p", "p_val_np", "df_np")
+
+#model_perf$var[17]<- "s(pphosph)+s(purea)"
+#model_perf$var[22:23] <- c("bimas", "bimas+varieties", "bimas+status", "bimas+region")
+#model_perf$var[25] <- "s(purea)+varieties"
+
+kbl(model_perf, caption = "Lasso comparison for variable selection", longtable = TRUE,booktabs=TRUE) %>%
+  kable_styling(latex_options = c("hold_position", "repeat_header","striped"),stripe_index=c(5:8,13,18,23:24,27,29:30)) %>%
+  kable_paper("hover", full_width = FALSE) %>%
+  pack_rows("size+seed", 1, 4,latex_gap_space="1em") %>%
+  pack_rows("size+seed+totlabor", 5, 8,latex_gap_space="1em") %>%
+  pack_rows("size+seed+totlabor+urea", 9, 12,latex_gap_space="1em") %>%
+  pack_rows("size+seed+totlabor+urea+wage_cat", 13, 13,latex_gap_space="1em") %>%
+  pack_rows("size+seed+totlabor+urea+phosphate", 14, 17,latex_gap_space="1em") %>%
+  pack_rows("size+seed+totlabor+urea+wage_cat+region", 18, 18,latex_gap_space="1em") %>%
+  pack_rows("size+seed+totlabor+urea+wage_cat+region+pesticide", 19, 22,latex_gap_space="1em") %>%
+  pack_rows("size+seed+totlabor+urea+wage_cat+region+pesticide+price", 23, 24,latex_gap_space="1em") %>%
+  pack_rows("size+seed+totlabor+urea+wage_cat+region+pesticide+price+fam_ratio", 25, 26,latex_gap_space="1em") %>%
+  pack_rows("size+seed+totlabor+urea+wage_cat+region+pesticide+price+varieties", 27, 27,latex_gap_space="1em") %>%
+  pack_rows("size+seed+totlabor+urea+wage_cat+region+pesticide+price+varieties+bimas", 28, 28,latex_gap_space="1em") %>%
+  pack_rows("size+seed+totlabor+urea+wage_cat+region+pesticide+price+varieties+purea", 29, 30,latex_gap_space="1em") 
+
+
+```
+**Table columns:**
+
+* var: the variable that is added
+* df: degrees of freedom 
+* MSE.train: MSE on training data
+* MSE.val: MSE on validation data
+* aic: Akaike information criterion
+* aicc: Akaike information criterion + penalty term
+* bic: Bayesian information criterion
+* r_sq: R-squared
+
+
+As described at the feature selection, the RSS and the $R^2$ are improving with the increase of features selected. However the other metrics (AIC,BIC and AICc) are behaving like the feature selection predicts. By increasing the number of features after approximately 6 the metrics are generally getting worse. This means that the number of features does not justify the improvement of the RSS and the $R^2$. The penalty for the more complex model is higher than it has a positive effect. Therefore the smaller model is preferred. \newline
+```{r}
+lassos <- seq(1:30)
+
+l <- length(lassos)
+var <- rep(NA, l)
+df <- rep(NA, l)
+MSE.train <- rep(NA, l)
+MSE.val <- rep(NA, l)
+aic <- rep(NA, l)
+aicc<-rep(NA, l)
+bic<- rep(NA, l)
+r_sq<- rep(NA, l)
+
+for (i in 1:l){
+  fitted<-get(eval(paste0('fitted.',lassos[[i]],sep='')))
+  model.name<-get(eval(paste0('lasso.model.',lassos[[i]],sep=''))) 
+
+  var[i] <- dimnames(tail(coefficients(model.name,s=fitted$bestlam), n=1))[[1]]
+  MSE.train[i] <- round(fitted$mse.train,digits=4)
+  MSE.val[i] <- round(fitted$mse.val,digits=4) 
+  bic[i] <- round(fitted$BIC$BIC,1) 
+  aicc[i] <- round(fitted$BIC$AICc,1)
+  aic[i] <- round(fitted$BIC$AIC,1)
+  r_sq[i] <- round(fitted$RSq,digits=4)
+}
+
+model_perf <- data.frame(MSE.train, MSE.val, bic,aic,aicc,r_sq, var,row.names = var)
+
+df.long <- pivot_longer(model_perf, cols=1:6, names_to = "metric", values_to = "value")
+
+df.long$var <- factor(df.long$var, levels =var)
+
+mse_plot <- ggplot(df.long[df.long$metric %in% c('MSE.train','MSE.val'),])+
+  aes(x= var, y=value, group=metric, color = metric)+
+  geom_line()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        axis.title.x = element_blank(), legend.position = c(0.8, 0.8))
+
+bic_plot <- ggplot(df.long[df.long$metric %in% c("bic","aic","aicc"),])+
+  aes(x=var, y=value, group=metric, color=metric)+
+  geom_line()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        axis.title.x = element_blank(), legend.position = c(0.8, 0.8))
+
+r_sq_plot<-ggplot(df.long[df.long$metric=="r_sq",])+
+  aes(x=var, y=value, group=1)+
+  geom_line()+
+  ylab("R-squared")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        axis.title.x = element_blank())
+  
+patch1 <- r_sq_plot + mse_plot
+
+patch1 + plot_annotation(
+  title = 'Model performance'
+)
+bic_plot + plot_annotation(title='Model metrics')
+```
+The best model to be chosen is: 
+
+$$
+log(g) = \beta_1*log(s) + \beta_2*log(e) + \beta_3*t + \beta_4 *log(u) + \beta_5 * w + \beta_0
+$$
+where :
+
+* g: goutput 
+* s: size
+* e: seed
+* t: totallabor
+* u: urea
+* w: wage_cat
+* $\beta_i$: coefficients and intercept 
+
+
+
+\newpage
 # 3 Second Model
 ## GAM (Generalized Additive Model)
 
