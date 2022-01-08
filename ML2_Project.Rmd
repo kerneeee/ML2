@@ -292,7 +292,8 @@ MSE <- function(model, data, split=train){
 
 The first model to present and evaluate is called Lasso Regression.
 
-## Lasso Regression
+## 2.1 Lasso Regression
+
 As in most of the regression types, it minimizes the residual sum of squares (short: RSS). But in addition to that a penalty term is included in the formula which shrinks some parameters coefficient estimates to zero.
 $$
 R S S+\lambda \sum_{j=1}^{p}\left|\widehat{\beta}_{j}\right|
@@ -300,9 +301,10 @@ $$
 ,where $\lambda$ is a hyperparameter, p are the parameters and $\beta$ the parameter coefficient estimates. The sum of the coefficents starts at $j=1$ because the $\beta_0$ is no parameter coefficient estimate, it is the bias of the model. Furthermore the absolute values of the estimates are calculated and summarized. As you can see from the equation, the lasso regression turns into a simple linear regression if the $\lambda$ is zero. \newline
 The goal and intention of the lasso regression is to create a sparse model which makes it easier to interpret. 
 
-### Feature Selection
+## 2.2 Feature Selection
+
 Before starting with the actual regression, we can investigate which of the features could be important for predicting the goutput of the data. This step is helpful as the number of features in the dataset is over twenty. \newline
-The method used for selecting the variables is the forward selection. The package leaps provides therefore a function regsubsets for linear models. It takes the target variable and the features of the dataset as input and gives some hints which variables could fit best to predict the goutput. The used algorithm optimizes the Mallows $C_p$ statistics which is related to the AIC. \newline
+The method used for selecting the variables is the forward selection. The package leaps provides therefore a function regsubsets for linear models. It takes the target variable and the features of the dataset as input and gives some hints which variables could fit best to predict the goutput. The used algorithm optimizes the Mallows $C_p$ statistics which is related to the AIC. (James,p.79) \newline
 There are more input parameters available for the function, i.e. the maximum size of a subset, the weight vector, the number of the best subsets or the method of variable selection (i.e. forward selection, backward selection, etc.). \newline
 The following graphics show the results of the analysis.  
 ```{r}
@@ -364,7 +366,8 @@ By investigating the output of the regsubsets, it shows which of the variables a
 ```
 The best 3-variable model is selecting size, phosphate and totlabor as the best performing variables. These variables are also in every other greater model. Therefore they are remembered when searching for a optimal model for the lasso regression. Also some other variables like pesticide, variety, wage and region are likely to have an influence on the model. \newline
 
-### Preprocessing
+## 2.3 Preprocessing
+
 As a specific package for the lasso regression, the glmnet package, is used, the data needs to be preprocessed. One important step therefore is to transform the qualititative variables like factor variables to dummy variables so the model can use them. The method is relatively simple by creating extra features with binary values. model.matrix is doing this transformation automatically by creating a design matrix out of the data frame. It also needs the information which variables to transform for which an expression is needed. This gives the opportunity to select the wished variables and also to do mathematical transformation like logarithm or polynomial conversion before applying and getting the model matrix for the model.\newline
 In addition to that a scaling option is implemented to test if the model is better when scaling the data. 
 
@@ -381,7 +384,9 @@ prepare_x<-function(expr,scaler=FALSE,center=FALSE){
 x<-prepare_x(goutput~.)
 y<-log(RiceFarms$goutput)
 ```
-### Training and Evaluation
+
+## 2.4 Training and Evaluation
+
 As the input features are transformed properly the lasso regression can be trained. After training the function return a list of models. This is because of the hyperparameter $\lambda$. This allows us to fine tune the model and improve its performance. To do this, a simple 10-fold-cross-validation on the training data is applied which is also included in the package glmnet. But before starting the validation a grid of possible lambdas is prepared to have the possibility to change the spectrum of the lambda parameter. Afterwards a plot is obtained showing the mean cross-validated error depending on the $\lambda$. The dotted lines in the plot are the $\lambda$ which minimizes the mean cross-validated error the most and the $\lambda$ which gives most regularized model such that the cross-validated error is within one standard error. In this task the $\lambda$ with the minimum mean cross-validated error is chosen. \newline
 To evaluate the selected model on the validation data with the chosen $\lambda$ the metrics MSE, BIC, AIC, AICc (modification of AIC as a correction for small sample sizes) and $R^2$ are used. \newline
 As for the glmnet package no known implemented function is found the metrics BIC,AIC, AICc and $R^2$ are implemented therefore manually. The formulas used are:
@@ -465,7 +470,8 @@ train_lasso_cv<-function(lasso.mod,x,y,grid){
 ```
 
 
-### Model Selection
+## 2.5 Model Selection
+
 After setting the environment and the criterions of the training and evaluating of models, the best model can be selected out of the possible feature subsets. As indicated at the beginning of the Feature Selection section, the variable size, totlabor and phosphate are used to start with. However, this is also done sequentially to obtain the metrics of each model. For the other variables mentioned, this preselection is continued. Additional mathematical transformations of the variables are also considered and included. In order to provide as much variation as possible, the variables are also compared with their size-scaled correspondents. The results of the evaluation are stored in a table and assessed. 
 ```{r}
 prep<-prepare_grid()
@@ -777,6 +783,33 @@ where :
 * w: wage_cat
 * $\beta_i$: coefficients and intercept 
 
+The best model also allows to look at its lambdas and the coefficients.
+
+```{r}
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat)
+lasso.model.13<-train_lasso_with_feature(x,y,prep$grid)
+fitted.13<-train_lasso_cv(lasso.model.13,x,y,prep$grid)
+
+beta=coef(lasso.model.13)
+
+tmp <- as.data.frame(as.matrix(beta))
+tmp$coef <- row.names(tmp)
+tmp <- reshape::melt(tmp, id = "coef")
+tmp$variable <- as.numeric(gsub("s", "", tmp$variable))
+tmp$lambda <- lasso.model.13$lambda[tmp$variable+1] # extract the lambda values
+tmp$norm <- apply(abs(beta[-1,]), 2, sum)[tmp$variable+1] # compute L1 norm
+
+# x11(width = 13/2.54, height = 9/2.54)
+ggplot(tmp[tmp$coef != "(Intercept)",], aes(lambda, value, color = coef, linetype = coef)) + 
+    geom_line() + 
+  geom_vline(xintercept=fitted.13$bestlam)+
+    scale_x_log10() + 
+    xlab("Lambda (log scale)") + 
+    guides(color = guide_legend(title = ""), 
+           linetype = guide_legend(title = "")) +
+    theme_bw() + 
+    theme(legend.key.width = unit(3,"lines"))
+```
 
 
 \newpage
@@ -1379,10 +1412,72 @@ for(i in 1:length(gam_cat)){
 ```
 \newpage
 
-# 4 Comparision
+# 4 Comparison
+After the best model of Lasso Regression and the Generalised Additive Model has been determined by validation, a comparison of these is undertaken. \newline
+The test data set that was put away at the beginning is used for this. Again, familiar metrics as in the previous sections are used for evaluation. Among others, the number of degrees of freedom, MSE and the $R^2$. In addition, the residuals sum of squares and the residuals are compared to see how good the prediction of the model is. 
+```{r}
+r_sq_test<-function(model.pred,y){
+  sst <- sum((y - mean(y))^2)
+  sse <- sum((model.pred - y)^2)
+  
+  rsq <- 1 - sse/sst
+  return(rsq)
+}
 
-\newpage
+g.aic<-round(AIC(gam17.4),1)
+g.bic<-round(BIC(gam17.4),1)
+g.pred<-predict(gam17.4,newdata=RiceFarms[test,])
+g.df<-round(df.residual(gam17.4),1)
+g.rsq<-round(r_sq_test(exp(g.pred),RiceFarms$goutput[test]),3)
+g.mse<-round(MSE(gam17.4,RiceFarms,test),4)
+g.rss<-(exp(g.pred)-RiceFarms$goutput[test])^2
+g.residual<-g.pred-log(RiceFarms$goutput[test])
 
-# 5 Conclusion
+l.aic<-round(fitted.13$BIC$AIC,1)
+l.bic<-round(fitted.13$BIC$BIC,1)
+x<-prepare_x(goutput~log(size)+log(seed_size)+totlab_size+log(urea)+wage_cat)
+l.pred<-predict(lasso.model.13,s=fitted.13$bestlam,newx=x[test,])
+l.df<-length(train)- round(fitted.13$df,1)
+l.rsq<-round(r_sq_test(l.pred,y[test]),3)
+l.mse<-round(mean((exp(l.pred)-exp(y[test]))^2),4)
+l.rss<-(exp(l.pred)-exp(y[test]))^2
+l.residual<-l.pred-y[test]
+
+```
+
+| Metric   | Lasso    | GAM       |
+|:--------:|:--------:|:---------:| 
+|   df     |`r l.df ` |`r g.df `  |
+|   $R^2$  |`r l.rsq `|`r g.rsq ` |
+|   MSE    |`r l.mse `|`r g.mse ` |
+```{r}
+d<-data.frame(g.rss,l.rss,g.residual,l.residual)
+
+
+rss_plot <- ggplot(d)+
+  aes(x= seq(1:length(g.rss)), y=g.rss/(10^6), color = 'g.rss')+
+  geom_line()+
+  geom_line(aes(y=l.rss/(10^6),color='l.rss'))+
+  ylab('RSS in 10^6 ')+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        axis.title.x = element_blank(), legend.position = c(0.8, 0.8))
+
+residual_plot <- ggplot(d)+
+  aes(x=g.pred , y=g.residual, color = 'g.resdiual')+
+  geom_point()+
+  geom_point(aes(x=l.pred,y=l.residual,color='l.residual'))+
+  xlab('fitted')+
+  ylab('Residuals')+
+  theme( legend.position = c(0.8, 0.8))
+
+
+rss_plot + plot_annotation(title='Model RSS Comparison')
+residual_plot + plot_annotation(title='Model Residual Comparison')
+
+```
+It can be seen from the tables that both models perform equally well. The Lasso model performs a little better with the $R^2$, but this should not be a problem. However, the Lasso model has more degrees of freedom than the other model, which is due to the fact that fewer predictor variables are needed than in the GAM model. However, the GAM model performs better on the MSE. 
+\newline 
+With regard to the graphs, there is also no significant difference between the models. It can be seen, however, that in the RSS plot all two models have similar false predictions at certain points in the test data set, since the peaks are at the same points. This is probably due to extreme values in the data set. \newline
+It can be concluded that both models can be used for predicting the output of the data set. It is up to the user to decide which model to use. If a simple model is needed, even for explanation, the Lasso model is preferred, because the GAM model is more complex and is used for non-linear complex relationships in the data set. 
 
 \newpage
