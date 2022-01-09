@@ -844,6 +844,11 @@ A GAM is restricted to be additive. Important interactions might be missed, but 
 
 The s() function, which is part of the gam library, is used to indicate that we would like to use a smoothing spline. Qualitative variables are automatically converted into dummy variables by the gam function according to the amount of levels they have.
 
+**Explanation of GAM visualization**
+
+The lower visualization is an example of our 2nd GAM including two variables, size and totlab_size. For both of them we are using a smoothing spline function together with a log transformation. Because the model is additive, we can examine the effect of each $f_{j}$ on $Y$ individually while holding all of the other variables fixed. All panels from above have the same vertical scale. This allows us to visually assess the relative contributions of each of the variables. We observe that size and totlab_size have a large effect on goutput. 
+The left-hand panel indicates that holding totlab_size fixed, goutput increases with size and is very steep up to about a size of 0.5 hectar and then becomes more and more flat.
+The right-hand panel indicates that holding size fixed, goutput increases drastically with the increased proportion of labour per size up to a proportion of about 500 hours/hectar and then flattens out. We can also see from the stripchart on the x-axis of the panel that most of the data are of smaller sizes up to 1 hectar and between 300 to 2000 hours of labor invested per hectar.
 ```{r}
 #size
 gam1 <- gam(log(goutput)~s(size), data = RiceFarms[train,])
@@ -865,10 +870,6 @@ plot.Gam(gam3, terms = "s(log(size))", residuals = TRUE, col="lightblue")
 title("Example GAM Visualization", font.main= 1)
 plot.Gam(gam3, terms = "s(log(totlab_size))", residuals = TRUE, col="lightblue")
 ```
-**Explanation:**
-The upper visualization is an example of our 2nd GAM including two variables, size and totlab_size. For both of them we are using a smoothing spline function together with a log transformation. Because the model is additive, we can examine the effect of each $f_{j}$ on $Y$ individually while holding all of the other variables fixed. All panels from above have the same vertical scale. This allows us to visually assess the relative contributions of each of the variables. We observe that size and totlab_size have a large effect on goutput. 
-The left-hand panel indicates that holding totlab_size fixed, goutput increases with size and is very steep up to about a size of 0.5 hectar and then becomes more and more flat.
-The right-hand panel indicates that holding size fixed, goutput increases drastically with the increased proportion of labour per size up to a proportion of about 500 hours/hectar and then flattens out. We can also see from the stripchart on the x-axis of the panel that most of the data are of smaller sizes up to 1 hectar and between 300 to 2000 hours of labor invested per hectar.
 
 ```{r}
 #urea
@@ -1186,18 +1187,15 @@ gam17.4 <- gam(log(goutput)~
 ```
 
 ## 3.2 Model Selection
-For retrieving our final model we make use of an approach called forward selection.
+For retrieving our final model we make use of an approach called forward selection (cf. James p. 79). We begin with a model, that contains the variable with highest correlation to our dependent variable goutput, which is size. We then add different representations of one variable and add those to the model, which result in the lowest deviance for the new two-variable model. This approach is continued until all variables have been tried out. Forward selection is a greedy approach, and might include variables early that later become redundant. 
 
-Forward selection (from James p. 79) : We begin with a model, that contains the variable with highest correlation to our dependent variable goutput, which is size. We then add different representations of one variable and add those to the model, which result in the lowest deviance for the new two-variable model. This approach is continued until all variables have been tried out. Forward selection is a greedy approach, and might include variables early that later become redundant.
-
-
-s()
-family = gaussian(link = "identity") (default)
-The default degree of 3 yields a cubic spline.
+We will first start with using smoothing spline function for each variable s() and we will use the default family, the gaussian(link = "identity"), in the GAM. We will also use the default degrees of freedom for each spline function, which is 3 and corresponds to a cubic spline. Based on the non-parametric p-value we access the suitability of the complexity of the chosen function and try out a different amount of degrees of freedom or other function e.g. just linear representation.
 
 The model results are mainly compared by using the p-value from the model summary, which is telling if the variable is significant important. We will use a p-value of 5% for the evaluation of variable significance. To compare different representations of the same variable we will use the deviance. In addition we list other metrics like MSE on the training and validation data as well as AIC. For an comparison of larger models with smaller models we will perform additional anova tests.
 
 **table for model selection:** The following table summarizes the variable selection process for the final GAM model. Starting from the top of the table we add for each grouped row in the table another variable with different representations of the variable for example checking whether log transformation yields any better results than using the variable as is. For each grouped row, the last model, yielding a p-value < 0.05 is the chosen model for further analysis.
+
+\newpage
 
 ```{r }
 #results='asis'
