@@ -73,7 +73,6 @@ The present data set includes production data for 171 indonesian rice farms. The
 |  variable  |                   description                   |        expressions        |
 |:----------:|:-----------------------------------------------:|:-------------------------:|
 |     id     |           unique identifier for a farm          |         unique id         |
-|    time    | unique identifier for a specific growing season |           1 - 6           |
 |    size    |        total production area in hectares        |        0.01 - 5.322       |
 |   status   |            status of property rights            | "owner", "share", "mixed" |
 |  varieties |                rice seed varietes               |  "trad", "high", "mixed"  |
