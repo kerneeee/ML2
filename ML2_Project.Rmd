@@ -446,6 +446,7 @@ train_lasso_with_feature<-function(x,y,grid){
   
   return(lasso.mod)
 }
+
 train_lasso_cv<-function(lasso.mod,x,y,grid){
   ##Use Cross-Validation to find the best lambda 
   set.seed(1) 
@@ -1465,7 +1466,7 @@ For the categorical variables we can see, that the farmers goutput tends to be h
 gam_num <- c("s(log(size))", "s(log(totlab_size))", "s(log(urea_size))" , "s(log(phosph_size + 1))" , "s(seed_size)",  "s(price)" , "s(pphosph)", "s(purea)")
 
 #gam_cat <-  c("wage_cat", "bimas", "region", "varieties")
-gam_cat <-  c("pest_size" ,"wage_cat", "bimas")
+gam_cat <-  c("pest_size", "wage_cat", "bimas")
 
 par(mfrow=c(6,2), 
     oma = c(1,1,1,1),
@@ -1483,8 +1484,9 @@ for(i in 1:length(gam_cat)){
 
 # 4 Comparison
 After the best model of Lasso Regression and the Generalised Additive Model has been determined by validation, a comparison of these is undertaken. \newline
-The first striking thing is that in both models the MSE is smaller in the validation set than in the training set.This is contrary to intuition. As already mentioned in the previous chapter GAMs, this could be due to the fact that there are lots of outliers in the data, and the training data set might include proportionally more outliers than the validation data, which negatively affects the MSE.\newline 
-The test data set that was put away at the beginning is used for this. Again, familiar metrics as in the previous sections are used for evaluation. Among others, the number of degrees of freedom, MSE and the $R^2$. In addition, the residuals sum of squares and the residuals are compared to see how good the prediction of the model is. 
+
+The first striking thing is that in both models the MSE is smaller in the validation set than in the training set. This is contrary to intuition. As already mentioned in the previous chapter GAMs, this could be due to the fact that there are lots of outliers in the data, and the training data set might include proportionally more outliers than the validation data, which negatively affects the MSE.\newline 
+The test data set that was put away at the beginning is used for model comparison. We will compare their metrics based on the already trained model (train) and train another model for each of the model types using training and validation data (full). Again, familiar metrics as in the previous sections are used for evaluation. Among others, the number of degrees of freedom, MSE and the $R^2$. In addition, the residuals sum of squares and the residuals are compared to see how good the prediction of the model is. 
 ```{r}
 r_sq_test<-function(model.pred,y){
   sst <- sum((y - mean(y))^2)
@@ -1513,16 +1515,83 @@ l.mse<-round(mean((exp(l.pred)-exp(y[test]))^2),4)
 l.rss<-(exp(l.pred)-exp(y[test]))^2
 l.residual<-l.pred-y[test]
 
+#new gam17.2 with training and validation data
+
+gam17.2_full <- gam(log(goutput)~
+               s(log(size))+
+               s(log(totlab_size))+
+               s(log(urea_size)) +
+               s(log(phosph_size+1))+
+               s(seed_size)+
+               pest_size+
+               s(price)+
+               #s(fam_ratio)+
+               s(pphosph)+
+               wage_cat +
+               bimas +
+               #region +
+               s(purea), data = RiceFarms[c(train,val),])
+
+g2.aic<-round(AIC(gam17.2_full),1)
+g2.bic<-round(BIC(gam17.2_full),1)
+g2.pred<-predict(gam17.2_full,newdata=RiceFarms[test,])
+g2.df<-round(df.residual(gam17.2_full),1)
+g2.rsq<-round(r_sq_test(exp(g2.pred),RiceFarms$goutput[test]),3)
+g2.mse<-round(MSE(gam17.2_full,RiceFarms,test),4)
+g2.rss<-(exp(g.pred)-RiceFarms$goutput[test])^2
+g2.residual<-g.pred-log(RiceFarms$goutput[test])
+
+#new lasso13 with training and validation data
+
+train_lasso_2<-function(x,y){
+  best.model <-glmnet(x[c(train,val),],y[c(train,val)],alpha=1, lambda = fitted.13$bestlam, thresh =1e-12)
+  res<-BICAIC(best.model)
+  
+ #Now what is the test MSE with this best lambda
+  lasso.pred.train<-predict(best.model ,newx=x[c(train,val),]) 
+  lasso.pred<-predict(best.model ,s=fitted.13$bestlam ,newx=x[test,]) 
+  
+  mse.train<-mean((lasso.pred.train -y[c(train,val)])^2)
+  mse.val<-mean((lasso.pred -y[test])^2)
+  rss<-(lasso.pred-y[test])^2
+  rs<-(exp(lasso.pred)-exp(y[test]))
+  
+  #plot(rss)
+  sst <- sum((y[test] - mean(y[test]))^2)
+  sse <- sum((lasso.pred - y[test])^2)
+  
+  #find R-Squared
+  rsq <- 1 - sse/sst
+  return(list('bestlam'=fitted.13$bestlam,'BIC'=res,'RSS'=rss,'RSq'=rsq,'FITTED'=lasso.pred,'df'=best.model$df,'mse.train'=mse.train,'mse.test'=mse.val, 'residual'=rs))
+}
+
+fitted.13_2<-train_lasso_2(x,y)
+
+l2.aic<-round(fitted.13_2$BIC$AIC,1)
+l2.bic<-round(fitted.13_2$BIC$BIC,1)
+l2.df<-length(c(train,val))- round(fitted.13_2$df,1)
+l2.rsq <- round(fitted.13_2$RSq,3)
+l2.rss <- fitted.13_2$residual
+
+l2.pred<-fitted.13_2$FITTED
+l2.rss<-fitted.13_2$RSS
+l2.residual<-fitted.13_2$residual
+
+#l2.pred<-predict(fitted.13_2,s=fitted.13$bestlam,newx=x[test,])
+l2.mse<-round(mean((exp(fitted.13_2$FITTED)-exp(y[test]))^2),4)
 ```
 
-| Metric   | Lasso    | GAM       |
-|:--------:|:--------:|:---------:| 
-|   df     |`r l.df ` |`r g.df `  |
-|   $R^2$  |`r l.rsq `|`r g.rsq ` |
-|   MSE    |`r l.mse `|`r g.mse ` |
+           
+| Metric   | Lasso(train)| GAM(train)| Lasso(full) | GAM(full) |
+|:--------:|:-----------:|:---------:|:-----------:|:---------:|
+|   df     |`r l.df `    |`r g.df `  | `r l2.df `  | `r g2.df `|
+|   $R^2$  |`r l.rsq `   |`r g.rsq ` | `r l2.rsq`  | `r g2.rsq`|
+|   MSE    |`r l.mse `   |`r g.mse ` | `r l2.mse`  | `r g2.mse`|
+
+
 ```{r}
 d<-data.frame(g.rss,l.rss,g.residual,l.residual)
-
+#d<-data.frame(g2.rss,l2.rss,g2.residual,l2.residual)
 
 rss_plot <- ggplot(d)+
   aes(x= seq(1:length(g.rss)), y=g.rss/(10^6), color = 'g.rss')+
@@ -1533,13 +1602,12 @@ rss_plot <- ggplot(d)+
         axis.title.x = element_blank(), legend.position = c(0.8, 0.8))
 
 residual_plot <- ggplot(d)+
-  aes(x=g.pred , y=g.residual, color = 'g.resdiual')+
+  aes(x=g.pred , y=g.residual, color = 'g.residual')+
   geom_point()+
   geom_point(aes(x=l.pred,y=l.residual,color='l.residual'))+
   xlab('fitted')+
   ylab('Residuals')+
   theme( legend.position = c(0.8, 0.8))
-
 
 rss_plot + plot_annotation(title='Model RSS Comparison')+
   scale_colour_discrete(labels=c("GAM", "LASSO"))
@@ -1547,8 +1615,12 @@ residual_plot + plot_annotation(title='Model Residual Comparison')+
   scale_colour_discrete(labels=c("GAM", "LASSO"))
 
 ```
-```{r}
 
+It can be seen from the tables that both models perform equally well. The Lasso model performs a little better with the $R^2$, but this should not be a problem. However, the Lasso model has more degrees of freedom than the other model, which is due to the fact that fewer predictor variables are needed than in the GAM model. However, the GAM model performs better on the MSE. 
+\newline 
+With regard to the graphs, there is also no significant difference between the models. It can be seen, however, that in the RSS plot all two models have similar false predictions at certain points in the test data set, since the peaks are at the same points. This is probably due to extreme values in the data set. We will lastly show some example predictions for goutput (gross output of rice in kg) using both models for an observation below 25% quantile, above 75% quantile and within the 25% to 75% quantile of goutput.
+
+```{r}
 test_observations <- c(112, 2, 187)
 
 #predict
@@ -1557,15 +1629,13 @@ l_p <- round(exp(predict(lasso.model.13,s=fitted.13$bestlam,newx=x[test,])[test_
 
 true <- RiceFarms[test,"goutput"][test_observations]
 ```
-| true goutput | Lasso    | GAM       |
-|:------------:|:--------:|:---------:| 
-| `r true[1]`  |`r l_p[1]`|`r g_p[1]` |
-| `r true[2]`  |`r l_p[2]`|`r g_p[2]` |
-| `r true[3]`  |`r l_p[3]`|`r g_p[3]` |
+| quantile | true goutput | Lasso    | GAM       |
+|:--------:|:------------:|:--------:|:---------:| 
+| <25%     | `r true[1]`  |`r l_p[1]`|`r g_p[1]` |
+| 25% - 75%| `r true[2]`  |`r l_p[2]`|`r g_p[2]` |
+| >75%     | `r true[3]`  |`r l_p[3]`|`r g_p[3]` |
 
-It can be seen from the tables that both models perform equally well. The Lasso model performs a little better with the $R^2$, but this should not be a problem. However, the Lasso model has more degrees of freedom than the other model, which is due to the fact that fewer predictor variables are needed than in the GAM model. However, the GAM model performs better on the MSE. 
-\newline 
-With regard to the graphs, there is also no significant difference between the models. It can be seen, however, that in the RSS plot all two models have similar false predictions at certain points in the test data set, since the peaks are at the same points. This is probably due to extreme values in the data set. \newline
-It can be concluded that both models can be used for predicting the output of the data set. It is up to the user to decide which model to use. If a simple model is needed, even for explanation, the Lasso model is preferred, because the GAM model is more complex and is used for non-linear complex relationships in the data set. 
+From the table we can see that especially for the larger outlier where the true goutput equals `r true[3]` both models are very far of, nevertheless the GAM model is giving a better prediction. For the other data points the predictions are much better from both of the models and especially the lasso model achieves good results, whereas the GAM model is a little overestimating the goutput. This behavior might also be visible in the residual comparison graphic, where the Lasso model has some more negative residuals and the GAM model some more larger positive residuals.
 
+In conclusion both models can be used for predicting the output of the data set. It is up to the user to decide which model to use. If a simple model is needed, even for explanation, the Lasso model is preferred, because the GAM model is more complex and is used for non-linear complex relationships in the data set.
 \newpage
