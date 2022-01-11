@@ -1,7 +1,7 @@
 ---
 title: "Analyzing indonesian rice farms"
 author: "Jonas Kernebeck, Alexander Flick, Felix Lehner"
-date: "07/16/2021"
+date: "01/11/2022"
 output:
   pdf_document:
     toc: yes
@@ -55,7 +55,7 @@ library(leaps)
 ```
 
 ```{r constants}
-data("RiceFarms", package = "splm")
+data("RiceFarms", package = "plm")
 
 col_to_remove = !names(RiceFarms) %in% c("id", "noutput")
 RiceFarms = RiceFarms[,col_to_remove]
@@ -68,7 +68,7 @@ RiceFarms = RiceFarms[,col_to_remove]
 
 # 1 Introduction
 
-The present data set includes production data for 171 indonesian rice farms. The dataframe contains the following variables:
+The present data set includes multiple production data for 171 indonesian rice farms. Overall it consists of 1026 observations. The dataframe contains the following variables:
 
 |  variable  |                   description                   |        expressions        |
 |:----------:|:-----------------------------------------------:|:-------------------------:|
@@ -209,7 +209,7 @@ The anova outputs show, that all of the categorical variables have a significant
 
 The performance of the regression modeling is highly dependent of the variable selection and transformation. Therefore a suitable choice is very important. 
 The variable *noutput* is a linear transformation of *goutput* as it represents *goutput* decreased by the harvesting costs. Therefore it is not used for the modeling because it would violate the multicollinearity assumption. \
-The variable *size* also correlates *strongly* with the target variable. This can be intuitively explained by the fact that a larger rice field naturally always produces a higher yield. Since the variables *seed*, *urea*, *phosphate* and *pesticide* are dependent on size, they are transformed into per-hectare sizes by dividing them with the respective hectare size of the farm. The *size* variable is not used for further modeling. \
+The variable *size* also correlates *strongly* with the target variable. This can be intuitively explained by the fact that a larger rice field naturally always produces a higher yield. Since the variables *seed*, *urea*, *phosphate* and *pesticide* are dependent on size, they are transformed into per-hectare sizes by dividing them with the respective hectare size of the farm. \
 The variables *famlabor* and *hiredlabor* are subsets of the variable *totlabor* and are therefore transformed into the share of *totlabor* by dividing them with the amount of *totlabor*. The variable *totlabor* is after that transformed to a per-hectare size by dividing it with the *size*.
 The variable *wage* follows a bimodal distribution. Therefore it is transformed into a binary variable, which indicates if the respective value is over or under 100. 
 
@@ -226,7 +226,7 @@ factor_varieties <- c("trad", "mixed", "high")
 RiceFarms$varieties <- factor(RiceFarms$varieties, levels = factor_varieties)
 ```
 
-3 Outliers most likely due to typos for observation 110, 947 and 1004
+3 Outliers most likely due to typos for observation 110, 947 and 1004 have been identified and manually adjusted.
 
 ```{r echo=FALSE}
 #outliers
@@ -389,7 +389,7 @@ y<-log(RiceFarms$goutput)
 
 ## 2.4 Training and Evaluation
 
-As the input features are transformed properly the lasso regression can be trained. After training the function return a list of models. This is because of the hyperparameter $\lambda$. This allows us to fine tune the model and improve its performance. To do this, a simple 10-fold-cross-validation on the training data is applied which is also included in the package glmnet. But before starting the validation a grid of possible lambdas is prepared to have the possibility to change the spectrum of the lambda parameter. Afterwards a plot is obtained showing the mean cross-validated error depending on the $\lambda$. The dotted lines in the plot are the $\lambda$ which minimizes the mean cross-validated error the most and the $\lambda$ which gives most regularized model such that the cross-validated error is within one standard error. In this task the $\lambda$ with the minimum mean cross-validated error is chosen. \newline
+As the input features are transformed properly the lasso regression can be trained. After training the function returns a list of models. This is because of the hyperparameter $\lambda$. This allows us to fine tune the model and improve its performance. To do this, a simple 10-fold-cross-validation on the training data is applied which is also included in the package glmnet. But before starting the validation a grid of possible lambdas is prepared to have the possibility to change the spectrum of the lambda parameter. Afterwards a plot is obtained showing the mean cross-validated error depending on the $\lambda$. The dotted lines in the plot are the $\lambda$ which minimizes the mean cross-validated error the most and the $\lambda$ which gives most regularized model such that the cross-validated error is within one standard error. In this task the $\lambda$ with the minimum mean cross-validated error is chosen. \newline
 To evaluate the selected model on the validation data with the chosen $\lambda$ the metrics MSE, BIC, AIC, AICc (modification of AIC as a correction for small sample sizes) and $R^2$ are used. \newline
 As for the glmnet package no known implemented function is found the metrics BIC,AIC, AICc and $R^2$ are implemented therefore manually. The formulas used are:
 
@@ -714,7 +714,7 @@ kbl(model_perf, caption = "Lasso comparison for variable selection", longtable =
 * r_sq: R-squared
 
 
-As described at the feature selection, the RSS and the $R^2$ are improving with the increase of features selected. However the other metrics (AIC,BIC and AICc) are behaving like the feature selection predicts. By increasing the number of features after approximately 6 the metrics are generally getting worse. This means that the number of features does not justify the improvement of the RSS and the $R^2$. The penalty for the more complex model is higher than it has a positive effect. Therefore the smaller model is preferred. \newline
+As described in the feature selection, the RSS and the $R^2$ are improving with the increase of features selected. However the other metrics (AIC,BIC and AICc) are behaving like the feature selection predicts. By increasing the number of features after approximately 6 the metrics are generally getting worse. This means that the number of features does not justify the improvement of the RSS and the $R^2$. The penalty for the more complex model is higher than it has a positive effect. Therefore the smaller model is preferred. \newline
 ```{r}
 lassos <- seq(1:30)
 
@@ -845,7 +845,7 @@ The s() function, which is part of the gam library, is used to indicate that we 
 
 **Explanation of GAM visualization**
 
-The lower visualization is an example of our 2nd GAM including two variables, size and totlab_size. For both of them we are using a smoothing spline function together with a log transformation. Because the model is additive, we can examine the effect of each $f_{j}$ on $Y$ individually while holding all of the other variables fixed. All panels from above have the same vertical scale. This allows us to visually assess the relative contributions of each of the variables. We observe that size and totlab_size have a large effect on goutput. 
+The lower visualization is an example of our 2nd GAM including two variables, size and totlab_size. For both of them we are using a smoothing spline function together with a log transformation. Because the model is additive, we can examine the effect of each $f_{j}$ on $Y$ individually while holding all of the other variables fixed. Both panels from below have the same vertical scale. This allows us to visually assess the relative contributions of each of the variables. We observe that size and totlab_size have a large effect on goutput. 
 The left-hand panel indicates that holding totlab_size fixed, goutput increases with size and is very steep up to about a size of 0.5 hectar and then becomes more and more flat.
 The right-hand panel indicates that holding size fixed, goutput increases drastically with the increased proportion of labour per size up to a proportion of about 500 hours/hectar and then flattens out. We can also see from the stripchart on the x-axis of the panel that most of the data are of smaller sizes up to 1 hectar and between 300 to 2000 hours of labor invested per hectar.
 ```{r}
@@ -1274,13 +1274,14 @@ kbl(model_perf, caption = "GAM comparison for variable selection",longtable = TR
 * size, labour, and urea: we will use logarithm of these variables, because of a smaller deviance
 * phosphor: this variable has lots of zeros as values. So we can not use directly log transformation because log of 0 is -inf. log(x+1) transformation is the best way to avoid errors created  by log transformation and is widely used among data scientists. So we will use this approach. We will use logarithm of phosph_size, because of a smaller deviance.
 * seed: we will use seed as is, because of a smaller deviance.
-* pesticide: we will use a linear fit of the variable, because the Anova test shows (cf. Anova test for pest_size) that the variable is significantly important for the model, but a non-linear transformations does not yield a significant difference.
-* price, family labour: Both variables are significant important for the model.
+* pesticide: we will use a linear fit of the variable, because the Anova test shows (cf. Anova test for pest_size on page 17) that the variable is significantly important for the model, but a non-linear transformations does not yield a significant difference.
+* price: p-value < 0.05, so we add the variable to our model 
+* family labour: p-value > 0.05, thus we do not use this variable
 * material prices: 
     * pseed: p-value > 0.05, thus we do not use this variable
     * pphosph: p-value < 0.05, so we add the variable to our model 
     * pphosph + purea: adding purea in addition to pphosph does does not improve the model significantly (p-value < 0.05)
-* wage: we will use wage_cat instead of a non-linear transformations of wage, due to the results of the anova test (cf. Anova test for wage/wage_cat)
+* wage: we will use wage_cat instead of a non-linear transformations of wage, due to the results of the anova test (cf. Anova test for wage/wage_cat on page 17)
 * categorical variables: 
     + bimas: p-value < 0.05, so we add the variable to our model
     + bimas+ additional categorical variables: adding the other categorical variables does not significantly improve the model (p-value > 0.05) so no other categorical variables are added in addition to bimas.
@@ -1414,7 +1415,8 @@ formula(gam17.2)
 #summary(gam17.4)$deviance
 ```
 
-The final GAM doe not include the following variables:
+The final GAM does not include the following variables:
+
 * numerical: fam_ratio, pseed
 * categorical: varieties, status, region
 
@@ -1451,7 +1453,7 @@ r_sq_adj <- function(model){
 $R^2_{adj}$= `r r_sq_adj(gam17.2)`
 
 **Visualization explanation** 
-Because the model is additive, we can examine the effect of each $f_{j}$ on $Y$ individually while holding all of the other variables fixed. All panels from the final model have the same vertical scale. This allows us to visually assess the relative contributions of each of the variables. We observe that size, totlab_size, urea_size, phosph_size, seed_size, pest_size and purea have a positive influence on goutput. E.g. with increasing size, goutput is increasing. Wherease price and pphosph have a negatice influence on goutput.
+Because the model is additive, we can examine the effect of each $f_{j}$ on $Y$ individually while holding all of the other variables fixed. All panels from the final model have the same vertical scale. This allows us to visually assess the relative contributions of each of the variables. We observe that size, totlab_size, urea_size, phosph_size, seed_size, pest_size and purea have a positive influence on goutput. E.g. with increasing size, goutput is increasing. Wherease price and pphosph have a negative influence on goutput.
 
 For the categorical variables we can see, that the farmers goutput tends to be higher when paying a wage less than 100 Rupiah per hour and bimas equal to yes is also increasing goutput.
 
