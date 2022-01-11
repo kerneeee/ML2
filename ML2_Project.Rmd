@@ -1547,6 +1547,22 @@ residual_plot + plot_annotation(title='Model Residual Comparison')+
   scale_colour_discrete(labels=c("GAM", "LASSO"))
 
 ```
+```{r}
+
+test_observations <- c(112, 2, 187)
+
+#predict
+g_p <- round(exp(predict(gam17.2, newdata = RiceFarms[test,])[test_observations]))
+l_p <- round(exp(predict(lasso.model.13,s=fitted.13$bestlam,newx=x[test,])[test_observations]))
+
+true <- RiceFarms[test,"goutput"][test_observations]
+```
+| true goutput | Lasso    | GAM       |
+|:------------:|:--------:|:---------:| 
+| `r true[1]`  |`r l_p[1]`|`r g_p[1]` |
+| `r true[2]`  |`r l_p[2]`|`r g_p[2]` |
+| `r true[3]`  |`r l_p[3]`|`r g_p[3]` |
+
 It can be seen from the tables that both models perform equally well. The Lasso model performs a little better with the $R^2$, but this should not be a problem. However, the Lasso model has more degrees of freedom than the other model, which is due to the fact that fewer predictor variables are needed than in the GAM model. However, the GAM model performs better on the MSE. 
 \newline 
 With regard to the graphs, there is also no significant difference between the models. It can be seen, however, that in the RSS plot all two models have similar false predictions at certain points in the test data set, since the peaks are at the same points. This is probably due to extreme values in the data set. \newline
